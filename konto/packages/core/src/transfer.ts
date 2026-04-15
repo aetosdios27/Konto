@@ -83,11 +83,21 @@ export async function transfer(
     if (debitAccountIds.length > 0) {
       const rows = await tx<{ account_id: string; balance: string }[]>`
         SELECT
-          account_id,
-          COALESCE(SUM(amount), 0)::text AS balance
-        FROM konto_entries
-        WHERE account_id = ANY(${debitAccountIds}::uuid[])
-        GROUP BY account_id
+          ids.id AS account_id,
+          (COALESCE(e.entry_sum, 0) - COALESCE(h.hold_sum, 0))::text AS balance
+        FROM unnest(${debitAccountIds}::uuid[]) AS ids(id)
+        LEFT JOIN (
+          SELECT account_id, SUM(amount) as entry_sum
+          FROM konto_entries
+          WHERE account_id = ANY(${debitAccountIds}::uuid[])
+          GROUP BY account_id
+        ) e ON e.account_id = ids.id
+        LEFT JOIN (
+          SELECT account_id, SUM(amount) as hold_sum
+          FROM konto_holds
+          WHERE account_id = ANY(${debitAccountIds}::uuid[])
+          GROUP BY account_id
+        ) h ON h.account_id = ids.id
       `;
       for (const r of rows) {
         balances.set(r.account_id, BigInt(r.balance));

@@ -39,3 +39,17 @@ ALTER TABLE konto_journals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE konto_entries ENABLE ROW LEVEL SECURITY;
 
 -- You can add policies later for multi-tenant use
+
+-- 4. Holds (ephemeral double-phase escrow)
+CREATE TABLE IF NOT EXISTS konto_holds (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id      UUID NOT NULL REFERENCES konto_accounts(id) ON DELETE RESTRICT,
+  recipient_id    UUID NOT NULL REFERENCES konto_accounts(id) ON DELETE RESTRICT,
+  amount          BIGINT NOT NULL CHECK (amount > 0),
+  idempotency_key TEXT UNIQUE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Optimize hold querying for the balance calculation invariant
+CREATE INDEX IF NOT EXISTS idx_holds_account ON konto_holds(account_id);
+ALTER TABLE konto_holds ENABLE ROW LEVEL SECURITY;

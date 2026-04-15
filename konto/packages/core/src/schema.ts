@@ -5,7 +5,7 @@ const literalSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 type Literal = z.infer<typeof literalSchema>;
 type Json = Literal | { [key: string]: Json } | Json[];
 
-const jsonSchema: z.ZodType<Json> = z.lazy(() =>
+export const jsonSchema: z.ZodType<Json> = z.lazy(() =>
   z.union([literalSchema, z.array(jsonSchema), z.record(jsonSchema)]),
 );
 
@@ -24,3 +24,13 @@ export const TransferPayloadSchema = z.object({
 });
 
 export type TransferPayload = z.infer<typeof TransferPayloadSchema>;
+
+export const HoldPayloadSchema = z.object({
+  idempotencyKey: z.string().optional(),
+  accountId: z.string().uuid(),
+  recipientId: z.string().uuid(),
+  amount: z.bigint(),
+  metadata: z.record(jsonSchema).optional(),
+});
+
+export type HoldPayload = z.infer<typeof HoldPayloadSchema>;

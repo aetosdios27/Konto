@@ -5,6 +5,8 @@ import {
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
 import { v4 as uuidv4 } from "uuid";
+import * as fs from "fs";
+import * as path from "path";
 import { transfer } from "../src/transfer";
 import {
   KontoInsufficientFundsError,
@@ -21,31 +23,9 @@ describe("Konto Core Engine", () => {
     container = await new PostgreSqlContainer("postgres:16-alpine").start();
     sql = postgres(container.getConnectionUri(), { max: 5 });
 
-    await sql`
-      CREATE TABLE konto_accounts (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        name TEXT NOT NULL,
-        currency TEXT NOT NULL
-      )
-    `;
-
-    await sql`
-      CREATE TABLE konto_journals (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        description TEXT,
-        metadata JSONB,
-        idempotency_key TEXT UNIQUE
-      )
-    `;
-
-    await sql`
-      CREATE TABLE konto_entries (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        journal_id UUID NOT NULL REFERENCES konto_journals(id),
-        account_id UUID NOT NULL REFERENCES konto_accounts(id),
-        amount BIGINT NOT NULL
-      )
-    `;
+    const schemaPath = path.resolve(__dirname, "../schema.sql");
+    const schemaSql = fs.readFileSync(schemaPath, "utf-8");
+    await sql.unsafe(schemaSql);
   }, 120000);
 
   afterAll(async () => {
@@ -68,7 +48,7 @@ describe("Konto Core Engine", () => {
 
     await sql`
       INSERT INTO konto_entries (journal_id, account_id, amount)
-      VALUES (${j.id}, ${a}, ${startingBalance})
+      VALUES (${j.id}, ${a}, ${startingBalance.toString()})
     `;
 
     return { a, b, external };

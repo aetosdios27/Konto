@@ -27,3 +27,10 @@ export class KontoInvalidEntryError extends Error {
     this.name = "KontoInvalidEntryError";
   }
 }
+
+export class KontoHoldNotFoundError extends Error {
+  constructor(message = "konto: hold not found") {
+    super(message);
+    this.name = "KontoHoldNotFoundError";
+  }
+}
