@@ -14,7 +14,7 @@ The project root is configured via `pnpm-workspace.yaml` and `turbo.json`, which
 Currently, the scaffolding is present but sparsely populated except for the core engine:
 
 - **`apps/studio`**: **Empty**. (Intended to be a web interface or visual dashboard for ledger management/analytics).
-- **`packages/cli`**: **Active**. A lightweight, functional brutalist CLI built with `cac` and `@clack/prompts`, designed to flawlessly inject the strict mathematical `konto` schema directly into any raw PostgreSQL instance without leaning on ORMs.
+- **`packages/cli`**: **Active**. A lightweight, functional brutalist CLI built with `cac` and `@clack/prompts`, designed to flawlessly inject the strict mathematical `konto` schema directly into raw PostgreSQL instances, AND automatically construct strongly typed DX client bindings dynamically leveraging developer TS configurations.
 - **`packages/types`**: **Empty**. (Intended for shared TypeScript definitions across various packages/apps).
 - **`packages/core`**: **Active development focus**. Contains the complete transaction engine and database schema.
 
@@ -68,6 +68,7 @@ Defined specialized domain errors to clearly bubble up faults to consumer applic
 4. **Escrow (Hold) Protocol Phase 1**: A fully ACID-compliant, two-phase commit system letting external applications natively block/earmark funds without corrupting balance computations. Successfully battle-tested against 1000s of concurrent transfers and holds (Pathological Benchmark).
 5. **CLI Schema Injector Phase 2**: Developed `@konto/cli` featuring an extensive and incredibly fast standalone ES-module bundle built with `tsup`. It leverages `cac` and `@clack/prompts` to quickly and interactively provision database targets natively using raw `postgres.js`, entirely circumventing ORMs.
 6. **Read API Phase 3**: Engineered zero-copy reading infrastructures (`read.ts`) mapping perfectly across account lookup points, real-time liquid balances mathematically deducting escrow components natively via JOINs, and complex sub-query payload mappings to emit heavily paginated Journal histories.
+7. **DX Client Generator Phase 4**: Designed and implemented the `@konto/cli` generator. Integrating `jiti` bindings alongside AST string-replacement masks, it builds customized strict application clients dynamically emitting Typescript wrappers instantly inside `node_modules/.konto` masking underlying raw structures perfectly.
 
 **Missing / To-Be-Done 🚧**
 1. **Frontend / Studio App (`apps/studio`)**: Entirely missing. Needs a graphical interface to view accounts and journals.
