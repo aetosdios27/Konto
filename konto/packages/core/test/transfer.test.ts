@@ -10,20 +10,17 @@ import {
   KontoInsufficientFundsError,
   KontoUnbalancedTransactionError,
   KontoDuplicateTransactionError,
+  KontoInvalidEntryError,
 } from "../src/errors";
 
 describe("Konto Core Engine", () => {
   let container: StartedPostgreSqlContainer;
   let sql: ReturnType<typeof postgres>;
 
-  // 1. Spin up ephemeral Postgres container
   beforeAll(async () => {
-    // Explicitly pass the image string to bypass Testcontainers parsing bugs
     container = await new PostgreSqlContainer("postgres:16-alpine").start();
     sql = postgres(container.getConnectionUri(), { max: 5 });
 
-    // Inject minimal schema for testing
-    // FIX: postgres.js strictly requires separate template literals for each statement
     await sql`
       CREATE TABLE konto_accounts (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -49,15 +46,13 @@ describe("Konto Core Engine", () => {
         amount BIGINT NOT NULL
       )
     `;
-  }, 120000); // 2-minute safety timeout
+  }, 120000);
 
   afterAll(async () => {
-    // Safe teardown to prevent unhandled rejections if setup fails
     if (sql) await sql.end();
     if (container) await container.stop();
   });
 
-  // Helper to create and fund test accounts per test
   async function setupAccounts(startingBalance: bigint = 1000n) {
     const a = uuidv4();
     const b = uuidv4();
@@ -65,18 +60,11 @@ describe("Konto Core Engine", () => {
 
     await sql`
       INSERT INTO konto_accounts (id, name, currency)
-      VALUES
-        (${a}, 'Alice', 'INR'),
-        (${b}, 'Bob', 'INR'),
-        (${external}, 'Bank', 'INR')
+      VALUES (${a}, 'Alice', 'INR'), (${b}, 'Bob', 'INR'), (${external}, 'Bank', 'INR')
     `;
 
-    // Genesis funding (bypass standard transfer constraints for setup)
-    const [j] = await sql`
-      INSERT INTO konto_journals (description)
-      VALUES ('genesis')
-      RETURNING id
-    `;
+    const [j] =
+      await sql`INSERT INTO konto_journals (description) VALUES ('genesis') RETURNING id`;
 
     await sql`
       INSERT INTO konto_entries (journal_id, account_id, amount)
@@ -101,29 +89,27 @@ describe("Konto Core Engine", () => {
 
     expect(journalId).toBeDefined();
 
-    // Verify balances manually via SUM
     const [aliceRow] =
       await sql`SELECT SUM(amount) as bal FROM konto_entries WHERE account_id = ${a}`;
     const [bobRow] =
       await sql`SELECT SUM(amount) as bal FROM konto_entries WHERE account_id = ${b}`;
 
-    expect(BigInt(aliceRow.bal)).toBe(700n); // 1000 - 300
-    expect(BigInt(bobRow.bal)).toBe(300n); // 0 + 300
+    expect(BigInt(aliceRow.bal)).toBe(700n);
+    expect(BigInt(bobRow.bal)).toBe(300n);
   });
 
   it("should throw KontoInsufficientFundsError when debit exceeds balance", async () => {
-    const { a, b } = await setupAccounts(500n); // Alice only has 500
+    const { a, b } = await setupAccounts(500n);
 
     await expect(
       transfer(sql, {
         entries: [
-          { accountId: a, amount: -600n }, // Tries to spend 600
+          { accountId: a, amount: -600n },
           { accountId: b, amount: 600n },
         ],
       }),
     ).rejects.toThrow(KontoInsufficientFundsError);
 
-    // Verify state didn't change
     const [aliceRow] =
       await sql`SELECT SUM(amount) as bal FROM konto_entries WHERE account_id = ${a}`;
     expect(BigInt(aliceRow.bal)).toBe(500n);
@@ -136,7 +122,7 @@ describe("Konto Core Engine", () => {
       transfer(sql, {
         entries: [
           { accountId: a, amount: -100n },
-          { accountId: b, amount: 90n }, // 10n went missing
+          { accountId: b, amount: 90n },
         ],
       }),
     ).rejects.toThrow(KontoUnbalancedTransactionError);
@@ -146,7 +132,6 @@ describe("Konto Core Engine", () => {
     const { a, b } = await setupAccounts(1000n);
     const key = `idemp-${Date.now()}`;
 
-    // First one succeeds
     await transfer(sql, {
       idempotencyKey: key,
       entries: [
@@ -155,7 +140,6 @@ describe("Konto Core Engine", () => {
       ],
     });
 
-    // Second one with the exact same key fails
     await expect(
       transfer(sql, {
         idempotencyKey: key,
@@ -165,5 +149,56 @@ describe("Konto Core Engine", () => {
         ],
       }),
     ).rejects.toThrow(KontoDuplicateTransactionError);
+  });
+
+  it("should reject transfers with an amount of zero", async () => {
+    const { a, b } = await setupAccounts(100n);
+
+    await expect(
+      transfer(sql, {
+        entries: [
+          { accountId: a, amount: 0n },
+          { accountId: b, amount: 0n },
+        ],
+      }),
+    ).rejects.toThrow(KontoInvalidEntryError);
+  });
+
+  it("should reject transfers to the same account in a single ledger event", async () => {
+    const { a } = await setupAccounts(100n);
+
+    await expect(
+      transfer(sql, {
+        entries: [
+          { accountId: a, amount: -50n },
+          { accountId: a, amount: 50n },
+        ],
+      }),
+    ).rejects.toThrow(KontoInvalidEntryError);
+  });
+
+  it("should handle 50 concurrent transfers gracefully (CI Concurrency Check)", async () => {
+    const { a, b } = await setupAccounts(5000n);
+    const CONCURRENCY = 50;
+
+    const promises = Array.from({ length: CONCURRENCY }, (_, i) =>
+      transfer(sql, {
+        idempotencyKey: `ci-concurrent-${Date.now()}-${i}`,
+        entries: [
+          { accountId: a, amount: -10n },
+          { accountId: b, amount: 10n },
+        ],
+      }),
+    );
+
+    await Promise.all(promises);
+
+    const [aliceRow] =
+      await sql`SELECT SUM(amount) as bal FROM konto_entries WHERE account_id = ${a}`;
+    const [bobRow] =
+      await sql`SELECT SUM(amount) as bal FROM konto_entries WHERE account_id = ${b}`;
+
+    expect(BigInt(aliceRow.bal)).toBe(4500n);
+    expect(BigInt(bobRow.bal)).toBe(500n);
   });
 });

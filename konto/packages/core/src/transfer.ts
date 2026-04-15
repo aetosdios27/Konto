@@ -4,11 +4,27 @@ import {
   KontoInsufficientFundsError,
   KontoUnbalancedTransactionError,
   KontoDuplicateTransactionError,
+  KontoInvalidEntryError,
 } from "./errors";
 
 // ── helpers ────────────────────────────────────────────────────────────────
-function assertZeroSum(entries: { amount: bigint }[]): void {
-  const sum = entries.reduce((acc, e) => acc + e.amount, 0n);
+function assertValidEntries(
+  entries: { accountId: string; amount: bigint }[],
+): void {
+  let sum = 0n;
+  const seenIds = new Set<string>();
+
+  for (const e of entries) {
+    if (e.amount === 0n)
+      throw new KontoInvalidEntryError("konto: transfer amount cannot be zero");
+    if (seenIds.has(e.accountId))
+      throw new KontoInvalidEntryError(
+        "konto: duplicate account id in single transfer leg",
+      );
+    seenIds.add(e.accountId);
+    sum += e.amount;
+  }
+
   if (sum !== 0n) throw new KontoUnbalancedTransactionError();
 }
 
@@ -24,13 +40,13 @@ export async function transfer(
   // 1. Runtime validation
   const parsed = TransferPayloadSchema.parse(payload);
 
-  // 2. Zero-sum check before any DB round-trip
-  assertZeroSum(parsed.entries);
+  // 2. Zero-sum and edge-case check before any DB round-trip
+  assertValidEntries(parsed.entries);
 
   // 3. Deterministic lock order
   const accountIds = sortedUniqueIds(parsed.entries);
 
-  // 4. Execute atomic transaction (Returning the pg promise directly)
+  // 4. Execute atomic transaction
   return db.begin(async (tx) => {
     // 5. Idempotency check
     if (parsed.idempotencyKey) {
@@ -42,7 +58,7 @@ export async function transfer(
       if (existing.length > 0) throw new KontoDuplicateTransactionError();
     }
 
-    // 6. Pessimistic locks
+    // 6. Pessimistic locks (Lexicographically sorted to mathematically prevent deadlocks)
     const locked = await tx<{ id: string }[]>`
       SELECT id FROM konto_accounts
       WHERE id = ANY(${accountIds}::uuid[])
@@ -56,7 +72,7 @@ export async function transfer(
       throw new Error(`konto: accounts not found: ${missing.join(", ")}`);
     }
 
-    // 7. Derived balances (debit accounts only)
+    // 7. Derived balances (debit accounts only to save compute)
     const debitAccountIds = [
       ...new Set(
         parsed.entries.filter((e) => e.amount < 0n).map((e) => e.accountId),
@@ -94,8 +110,8 @@ export async function transfer(
       }
     }
 
-    // 9. Zero-sum re-check under lock
-    assertZeroSum(parsed.entries);
+    // 9. Zero-sum and validation re-check under lock
+    assertValidEntries(parsed.entries);
 
     // 10. Insert journal record
     const description =
@@ -103,7 +119,7 @@ export async function transfer(
         ? parsed.metadata.description
         : null;
 
-    const metadataJson = tx.json((parsed.metadata ?? {}) as any);
+    const metadataJson = tx.json(parsed.metadata ?? {});
 
     const journalRows = await tx<{ id: string }[]>`
       INSERT INTO konto_journals (description, metadata, idempotency_key)
@@ -118,7 +134,7 @@ export async function transfer(
     const journal = journalRows[0];
     if (!journal) throw new Error("konto: journal insert returned no rows");
 
-    // 11. Bulk insert entries
+    // 11. Bulk insert entries (Using high-performance UNNEST)
     await tx`
       INSERT INTO konto_entries (journal_id, account_id, amount)
       SELECT * FROM UNNEST(
