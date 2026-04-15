@@ -1,0 +1,25 @@
+{
+  "name": "@konto/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "konto": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --clean --minify",
+    "dev": "tsup src/index.ts --format esm --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.7.0",
+    "cac": "^6.7.14",
+    "dotenv": "^16.4.5",
+    "picocolors": "^1.0.1",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0"
+  }
+}

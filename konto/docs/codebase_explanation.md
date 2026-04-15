@@ -30,14 +30,16 @@ The PostgreSQL schema reflects a classic immutable double-entry architecture.
 - **`konto_journals`**: The atomic grouping for a single transaction action. Enforces **idempotency** constraints so identical requests from external systems aren't double-processed.
 - **`konto_entries`**: The immutable, append-only source of truth connecting journals to accounts. 
   - **Financial Safety**: A strict check constraint (`amount != 0`) avoids meaningless entries. Positive numbers represent credits, and negative numbers represent debits.
+- **`konto_holds`**: An ephemeral table managing the two-phase commit (Escrow) system. Tracks uncommitted, earmarked funds that reduce the available balance but haven't hit the immutable journal yet.
 
-### 2. Transaction Engine (`transfer.ts`)
-The `transfer` function manages the complexity of logging financial movements reliably.
+### 2. Transaction Engines (`transfer.ts` & `hold.ts`)
+The `transfer` and `hold` functions manage the complexity of logging financial movements reliably and atomically.
 - **Zod Validation**: Validates payloads on input. Crucially, uses **`bigint`** (not `number`) to eliminate any chance of IEEE 754 floating-point errors.
 - **Zero-sum Constraints**: Mathematically enforces that `Sum(Debits) + Sum(Credits) = 0` prior to any database calls, and re-validates under strict locks.
-- **Deadlock Prevention**: Deterministically sorts account IDs lexicographically and requests `FOR UPDATE` pessimistic locks in that specific order, preventing standard DB deadlocks.
-- **On-the-fly Balance Calculation**: It avoids storing stale or out-of-sync balances. For any account being debit-tested, it dynamically aggregates `SUM(amount)` across associated account entries to check if an overdraft error should be thrown (`KontoInsufficientFundsError`).
+- **Deadlock Prevention**: Deterministically sorts account IDs lexicographically and requests `FOR UPDATE` pessimistic locks in that specific order, preventing standard DB deadlocks across simultaneous complex transfers and holds.
+- **On-the-fly Balance Calculation**: It avoids storing stale or out-of-sync balances. The system dynamically aggregates `SUM(amount)` across `konto_entries` and explicitly subtracts active holds (`konto_holds`) via a zero-copy indexed `LEFT JOIN` algorithm to safely prevent double-spends (`KontoInsufficientFundsError`).
 - **High-performance Bulk Inserts**: Uses PostgreSQL's `UNNEST` capabilities to batch insert all legs of the journal entries simultaneously in a single atomic payload.
+- **Hold Mechanics**: Implements a strict two-phase commit escrow. You can initialize a `hold()`, and eventually resolve it permanently via `commitHold()` or abort via `rollbackHold()`, all fully integrated into the deadlock-immune lexographical locking structure.
 
 ### 3. Custom Errors (`errors.ts`)
 Defined specialized domain errors to clearly bubble up faults to consumer applications:
@@ -55,8 +57,9 @@ Defined specialized domain errors to clearly bubble up faults to consumer applic
 
 **Completed ✅**
 1. **Monorepo Setup**: Full Turborepo, Next.js configurations (though empty apps), TypeScript, Prettier, and basic linting configurations initialized.
-2. **Core Schema**: Postgres structures, row-level security enabled (though policies are unwritten), optimization indexes established.
+2. **Core Schema**: Postgres structures, row-level security enabled (though policies are unwritten), optimization indexes established, including the `konto_holds` escrow foundation.
 3. **Ledger Engine**: The raw financial transfer logic is highly optimized, handles high-concurrency correctly with deterministic locks, prevents deadlocks, validates payloads securely, and acts as an atomic unit of accounting truth.
+4. **Escrow (Hold) Protocol Phase 1**: A fully ACID-compliant, two-phase commit system letting external applications natively block/earmark funds without corrupting balance computations. Successfully battle-tested against 1000s of concurrent transfers and holds (Pathological Benchmark).
 
 **Missing / To-Be-Done 🚧**
 1. **Frontend / Studio App (`apps/studio`)**: Entirely missing. Needs a graphical interface to view accounts and journals.
