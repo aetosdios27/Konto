@@ -1,9 +1,10 @@
 import postgres from "postgres";
 import { transfer } from "./src/transfer";
 import { performance } from "perf_hooks";
+import { v4 as uuidv4 } from "uuid";
 
-// 1. Explicitly configure the connection pool for a stress test
-const MAX_CONNECTIONS = 100; // Adjust based on your postgres max_connections config
+// Max connections tuned for high-throughput parallel execution
+const MAX_CONNECTIONS = 100;
 const sql = postgres({
   host: "localhost",
   port: 5432,
@@ -14,41 +15,46 @@ const sql = postgres({
   idle_timeout: 20,
 });
 
-const ACCOUNT_A = "550e8400-e29b-41d4-a716-446655440000";
-const ACCOUNT_B = "550e8400-e29b-41d4-a716-446655440001";
-
-const CONCURRENCY = 5000;
+const POOL_SIZE = 500;
+const CONCURRENCY = 10000;
 
 async function main() {
+  console.log(`🚀 Starting Konto REALISTIC Hammer...`);
   console.log(
-    `🚀 Starting Konto Concurrency Hammer (${CONCURRENCY} transfers)...\n`,
+    `📊 Accounts: ${POOL_SIZE} | Concurrent Transfers: ${CONCURRENCY}\n`,
   );
-  console.log(`🔌 Database connection pool size: ${MAX_CONNECTIONS}`);
 
   try {
-    // 1. Seed accounts
-    await sql`
-      INSERT INTO konto_accounts (id, name, currency)
-      VALUES
-        (${ACCOUNT_A}, 'Hammer A', 'INR'),
-        (${ACCOUNT_B}, 'Hammer B', 'INR')
-      ON CONFLICT (id) DO NOTHING
-    `;
+    // 1. Generate an array of Account IDs
+    const accountIds = Array.from({ length: POOL_SIZE }, () => uuidv4());
 
-    // 2. Genesis Credit directly to ACCOUNT_A so it can actually send money
-    await sql`
-      INSERT INTO konto_journals (description) VALUES ('Genesis Hammer Funding')
-      RETURNING id
-    `.then(async ([j]) => {
-      await sql`
-        INSERT INTO konto_entries (journal_id, account_id, amount)
-        VALUES (${j.id}, ${ACCOUNT_A}, ${10000000n})
-      `;
+    // 2. Batch Insert Accounts
+    console.log(`⏳ Seeding ${POOL_SIZE} accounts...`);
+    const accountRows = accountIds.map((id, index) => ({
+      id,
+      name: `Pool Account ${index}`,
+      currency: "INR",
+    }));
+    await sql`INSERT INTO konto_accounts ${sql(accountRows, "id", "name", "currency")} ON CONFLICT DO NOTHING`;
+
+    // 3. Genesis Funding (Give everyone ₹100,000 so we don't hit random Insufficient Funds)
+    console.log(`⏳ Funding accounts...`);
+    await sql.begin(async (tx) => {
+      const [j] =
+        await tx`INSERT INTO konto_journals (description) VALUES ('Realistic Hammer Genesis') RETURNING id`;
+      const entryRows = accountIds.map((id) => ({
+        journal_id: j.id,
+        account_id: id,
+        amount: 10000000n, // ₹100,000 in cents/paisa
+      }));
+      // Chunking the insert just in case the pool is massive
+      for (let i = 0; i < entryRows.length; i += 1000) {
+        await tx`INSERT INTO konto_entries ${sql(entryRows.slice(i, i + 1000), "journal_id", "account_id", "amount")}`;
+      }
     });
 
-    console.log("✅ Accounts seeded and Account A funded with ₹100,000");
     console.log(
-      "⏳ Hammering... (console suppressed during run to prevent event loop lag)",
+      "✅ Pool seeded and funded. \n⏳ Hammering (console suppressed)...",
     );
 
     let success = 0;
@@ -58,22 +64,28 @@ async function main() {
 
     const start = performance.now();
 
-    // 3. Fire the load
+    // 4. Fire randomized load
     const promises = Array.from({ length: CONCURRENCY }, async (_, i) => {
+      // Pick random sender and receiver
+      const sender = accountIds[Math.floor(Math.random() * POOL_SIZE)];
+      let receiver = accountIds[Math.floor(Math.random() * POOL_SIZE)];
+      while (receiver === sender) {
+        receiver = accountIds[Math.floor(Math.random() * POOL_SIZE)];
+      }
+
       const reqStart = performance.now();
       try {
         await transfer(sql, {
-          idempotencyKey: `hammer-${i}-${Date.now()}`,
+          idempotencyKey: `real-hammer-${i}-${Date.now()}`,
           entries: [
-            { accountId: ACCOUNT_A, amount: -100n }, // -₹1
-            { accountId: ACCOUNT_B, amount: 100n }, // +₹1
+            { accountId: sender, amount: -100n },
+            { accountId: receiver, amount: 100n },
           ],
         });
         success++;
         latencies.push(performance.now() - reqStart);
       } catch (e: any) {
         failed++;
-        // Track error types without spamming the console
         const msg = e.message || "Unknown Error";
         errorTypes.set(msg, (errorTypes.get(msg) || 0) + 1);
       }
@@ -84,14 +96,14 @@ async function main() {
     const durationMs = performance.now() - start;
     const durationSec = durationMs / 1000;
 
-    // 4. Calculate Percentiles
+    // 5. Metrics
     latencies.sort((a, b) => a - b);
     const getPercentile = (p: number) =>
       latencies.length > 0
         ? latencies[Math.floor(latencies.length * p)].toFixed(2)
         : "0.00";
 
-    console.log("\n✅ HAMMER COMPLETE");
+    console.log("\n✅ REALISTIC HAMMER COMPLETE");
     console.log("--------------------------------------------------");
     console.log(`Total transfers : ${CONCURRENCY}`);
     console.log(`Successful      : ${success}`);
@@ -118,12 +130,10 @@ async function main() {
         console.log(`  - ${count}x: ${msg}`);
       }
     } else {
-      console.log(
-        "\n🎉 NO DEADLOCKS, NO RACES, NO INSUFFICIENT FUNDS — CLEAN RUN!",
-      );
+      console.log("\n🎉 CLEAN RUN!");
     }
   } catch (err: any) {
-    console.error("Hammer crashed catastrophically:", err.message);
+    console.error("Hammer crashed:", err.message);
   } finally {
     await sql.end();
   }
