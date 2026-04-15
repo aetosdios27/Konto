@@ -1,5 +1,5 @@
 import postgres from "postgres";
-import { transfer } from "./src/transfer";
+import { transfer } from "../src/transfer";
 import { performance } from "perf_hooks";
 import { v4 as uuidv4 } from "uuid";
 
