@@ -34,3 +34,10 @@ export class KontoHoldNotFoundError extends Error {
     this.name = "KontoHoldNotFoundError";
   }
 }
+
+export class KontoAccountNotFoundError extends Error {
+  constructor(message = "konto: account not found") {
+    super(message);
+    this.name = "KontoAccountNotFoundError";
+  }
+}

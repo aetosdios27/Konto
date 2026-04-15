@@ -14,7 +14,7 @@ The project root is configured via `pnpm-workspace.yaml` and `turbo.json`, which
 Currently, the scaffolding is present but sparsely populated except for the core engine:
 
 - **`apps/studio`**: **Empty**. (Intended to be a web interface or visual dashboard for ledger management/analytics).
-- **`packages/cli`**: **Empty**. (Intended to be command-line tooling to interact with the ledger or run migrations).
+- **`packages/cli`**: **Active**. A lightweight, functional brutalist CLI built with `cac` and `@clack/prompts`, designed to flawlessly inject the strict mathematical `konto` schema directly into any raw PostgreSQL instance without leaning on ORMs.
 - **`packages/types`**: **Empty**. (Intended for shared TypeScript definitions across various packages/apps).
 - **`packages/core`**: **Active development focus**. Contains the complete transaction engine and database schema.
 
@@ -41,7 +41,13 @@ The `transfer` and `hold` functions manage the complexity of logging financial m
 - **High-performance Bulk Inserts**: Uses PostgreSQL's `UNNEST` capabilities to batch insert all legs of the journal entries simultaneously in a single atomic payload.
 - **Hold Mechanics**: Implements a strict two-phase commit escrow. You can initialize a `hold()`, and eventually resolve it permanently via `commitHold()` or abort via `rollbackHold()`, all fully integrated into the deadlock-immune lexographical locking structure.
 
-### 3. Custom Errors (`errors.ts`)
+### 3. Read API (`read.ts`)
+The ledger avoids N+1 queries by offloading logic natively to PostgreSQL and aggressively mitigating Node.js floating-point decay lines across BigInt data limits.
+- **`getAccount`**: High-performance isolated point lookups for account metadata.
+- **`getBalance`**: Executes mathematical limits summing `konto_entries` natively and deducting explicitly queried locks over `konto_holds`. Emits zero-copy available balances deterministically.
+- **`getJournals`**: Fetches deeply nested journal layouts, utilizing explicit `LATERAL` joins combined with sub-aggregated `json_agg` boundaries. Includes flawless deterministic keyset pagination scaling efficiently across infinite historical subsets.
+
+### 4. Custom Errors (`errors.ts`)
 Defined specialized domain errors to clearly bubble up faults to consumer applications:
 - `KontoInsufficientFundsError`
 - `KontoUnbalancedTransactionError`
@@ -60,12 +66,12 @@ Defined specialized domain errors to clearly bubble up faults to consumer applic
 2. **Core Schema**: Postgres structures, row-level security enabled (though policies are unwritten), optimization indexes established, including the `konto_holds` escrow foundation.
 3. **Ledger Engine**: The raw financial transfer logic is highly optimized, handles high-concurrency correctly with deterministic locks, prevents deadlocks, validates payloads securely, and acts as an atomic unit of accounting truth.
 4. **Escrow (Hold) Protocol Phase 1**: A fully ACID-compliant, two-phase commit system letting external applications natively block/earmark funds without corrupting balance computations. Successfully battle-tested against 1000s of concurrent transfers and holds (Pathological Benchmark).
+5. **CLI Schema Injector Phase 2**: Developed `@konto/cli` featuring an extensive and incredibly fast standalone ES-module bundle built with `tsup`. It leverages `cac` and `@clack/prompts` to quickly and interactively provision database targets natively using raw `postgres.js`, entirely circumventing ORMs.
+6. **Read API Phase 3**: Engineered zero-copy reading infrastructures (`read.ts`) mapping perfectly across account lookup points, real-time liquid balances mathematically deducting escrow components natively via JOINs, and complex sub-query payload mappings to emit heavily paginated Journal histories.
 
 **Missing / To-Be-Done 🚧**
 1. **Frontend / Studio App (`apps/studio`)**: Entirely missing. Needs a graphical interface to view accounts and journals.
-2. **CLI Tools (`packages/cli`)**: Missing completely. Needs logic to execute commands, seed DBs, or apply ledger schemas to existing infrastructures.
-3. **API Layer**: Missing an API encapsulation. As of now, `core` expects a database instance and payload. There's no REST/GraphQL layer natively exposed yet to wire it up to other microservices across a network.
-4. **General Reading functions**: There is a `transfer` mutation block but simple "Get Account Balance" or "Fetch Account History" queries don't yet have dedicated exported typescript abstractions in `core`.
+2. **API Layer**: Missing an API encapsulation. As of now, `core` expects a database instance and payload. There's no REST/GraphQL layer natively exposed yet to wire it up to other microservices across a network.
 
 ## Conclusion
-The repository has an extremely solid mathematical/accounting foundation mimicking industry-standard core banking ledgers. The immediate next necessary steps for the project involve building out the read operations (Get Balance, List Transactions) and establishing user/developer interfaces (`studio` and `cli`).
+The repository has an extremely solid mathematical/accounting foundation mimicking industry-standard core banking ledgers. Both the mutation engine and Read API are fully complete inside the core library. The immediate next necessary steps involve API network encapsulation, and the `studio` graphical dashboard.
