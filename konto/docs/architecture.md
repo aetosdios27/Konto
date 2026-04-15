@@ -1,0 +1,278 @@
+# Architecture & Physics
+
+This document describes the internal systems architecture of the Konto Protocol. It is intended for engineers who need absolute trust in the underlying math, concurrency model, and database operations before integrating a financial ledger into production.
+
+---
+
+## 1. The Core Schema
+
+Konto's data model consists of four PostgreSQL tables. They are designed to be immutable-first, append-only where possible, and strictly constrained at the database level so that application bugs cannot corrupt financial state.
+
+### `konto_accounts`
+
+The node table. Every financial entity (user wallet, merchant account, platform fee pool, tax escrow) is a row here.
+
+```sql
+CREATE TABLE konto_accounts (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        TEXT NOT NULL,
+  currency    TEXT NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+  metadata    JSONB,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**Design decisions:**
+- **UUIDv4 primary keys** — Eliminates sequential ID guessing and allows distributed ID generation without coordination.
+- **ISO 4217 currency check** — The `CHECK (currency ~ '^[A-Z]{3}$')` constraint rejects malformed currency codes at the database level.
+- **`ON DELETE RESTRICT`** on all foreign keys pointing here — You cannot delete an account that has entries or active holds. The ledger is permanent.
+
+### `konto_journals`
+
+The atomic event wrapper. A journal represents a single business event ("Invoice #42 paid", "Subscription renewed"). It groups one or more entry legs together.
+
+```sql
+CREATE TABLE konto_journals (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  description       TEXT,
+  metadata          JSONB,
+  idempotency_key   TEXT UNIQUE,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**Design decisions:**
+- **Idempotency key** — A `UNIQUE` constraint on `idempotency_key` prevents double-processing. If a network retry sends the same payment request twice, the second attempt throws `KontoDuplicateTransactionError` instead of creating duplicate entries.
+- **Metadata is JSONB** — Structured, queryable, and schema-free. The typed client generator (Phase 4) overlays strict TypeScript interfaces on top of this field.
+
+### `konto_entries`
+
+The only source of truth. This is an append-only, immutable log of every financial movement in the system.
+
+```sql
+CREATE TABLE konto_entries (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  journal_id  UUID NOT NULL REFERENCES konto_journals(id) ON DELETE CASCADE,
+  account_id  UUID NOT NULL REFERENCES konto_accounts(id) ON DELETE RESTRICT,
+  amount      BIGINT NOT NULL CHECK (amount != 0),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**Design decisions:**
+- **`BIGINT`, not `NUMERIC` or `FLOAT`** — JavaScript's `number` type is IEEE 754 double-precision. Values above `2^53` silently lose precision. By using `BIGINT` in Postgres and `bigint` in TypeScript, we guarantee exact integer arithmetic for all monetary values. Store cents/paise, not dollars/rupees.
+- **`CHECK (amount != 0)`** — A zero-amount entry is meaningless in double-entry accounting. Rejecting it at the DB level prevents application bugs from polluting the ledger.
+- **`ON DELETE CASCADE` from journals** — If a journal is deleted (which should never happen in production), its entries go with it. Orphaned entries would corrupt balance derivations.
+- **`ON DELETE RESTRICT` to accounts** — An account with entries cannot be deleted. Period.
+
+### `konto_holds`
+
+The ephemeral escrow table. Holds represent funds that are earmarked but not yet settled.
+
+```sql
+CREATE TABLE konto_holds (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id      UUID NOT NULL REFERENCES konto_accounts(id) ON DELETE RESTRICT,
+  recipient_id    UUID NOT NULL REFERENCES konto_accounts(id) ON DELETE RESTRICT,
+  amount          BIGINT NOT NULL CHECK (amount > 0),
+  idempotency_key TEXT UNIQUE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**Design decisions:**
+- **`CHECK (amount > 0)`** — A hold is always a positive earmark. Negative holds are nonsensical.
+- **Ephemeral by design** — Unlike entries, holds are deleted when committed or rolled back. They exist solely to reduce available balance during the escrow window.
+- **Mechanical, not semantic** — Holds carry no metadata. Context for why a hold exists belongs in the application database or in the journal created when the hold is committed. The ledger only cares about the lock on the value.
+
+---
+
+## 2. The Derivation Engine (Read API)
+
+Konto never stores a balance. Every call to `getBalance()` derives the number from first principles.
+
+### The Balance Equation
+
+For any account `a`:
+
+$$B_a = \sum_{e \in \text{entries}(a)} e.\text{amount} - \sum_{h \in \text{holds}(a)} h.\text{amount}$$
+
+This is computed in a single SQL query using two subquery `LEFT JOIN`s:
+
+```sql
+SELECT
+  a.id,
+  a.currency,
+  COALESCE(e.total, 0)::text AS entries_sum,
+  COALESCE(h.total, 0)::text AS holds_sum
+FROM konto_accounts a
+LEFT JOIN (
+  SELECT account_id, SUM(amount) as total
+  FROM konto_entries WHERE account_id = $1
+  GROUP BY account_id
+) e ON e.account_id = a.id
+LEFT JOIN (
+  SELECT account_id, SUM(amount) as total
+  FROM konto_holds WHERE account_id = $1
+  GROUP BY account_id
+) h ON h.account_id = a.id
+WHERE a.id = $1
+```
+
+### The V8 Float Decay Patch
+
+Notice the `::text` cast on the sums. This is critical.
+
+**The problem:** PostgreSQL's `BIGINT` can hold values up to `2^63 - 1`. JavaScript's `Number` type can only safely represent integers up to `2^53 - 1` (`Number.MAX_SAFE_INTEGER = 9007199254740991`). If Postgres returns a raw `BIGINT` to the `postgres.js` driver, the driver deserializes it as a JavaScript `number`. For values above `2^53`, this causes **silent precision loss** — the number is rounded to the nearest representable float.
+
+**The fix:** Cast to `::text` inside SQL. The driver returns a string. We then convert it in TypeScript:
+
+```typescript
+const entriesSum = BigInt(row.entries_sum);  // "9007199254740993" → 9007199254740993n ✓
+```
+
+This pattern is applied everywhere: `getBalance`, `transfer` (during debit-side balance checks), and `getJournals`.
+
+### Avoiding N+1 in Journal Hydration
+
+`getJournals()` must return each journal with its associated entry legs. A naive implementation would query journals, then loop over each journal to fetch its entries — the classic N+1 problem.
+
+Konto solves this with a PostgreSQL `LATERAL` join and `json_agg`:
+
+```sql
+SELECT 
+  j.id, j.description, j.metadata, j.created_at,
+  e.agg_entries as entries
+FROM konto_journals j
+JOIN LATERAL (
+  SELECT json_agg(
+    json_build_object(
+      'accountId', account_id,
+      'amount', amount::text   -- V8 Float Decay Patch applied here too
+    )
+  ) as agg_entries
+  FROM konto_entries WHERE journal_id = j.id
+) e ON true
+WHERE j.id IN (
+  SELECT journal_id FROM konto_entries WHERE account_id = $1
+)
+ORDER BY j.created_at DESC, j.id DESC   -- deterministic tie-breaker
+LIMIT $2
+```
+
+**Key details:**
+- `amount::text` inside `json_build_object` — JSON serialization would otherwise convert BigInt to an unquoted number, which `JSON.parse` would then truncate to a float. By casting to text, we get `"amount": "5000"` in the JSON, which we safely convert via `BigInt(entry.amount)` in TypeScript.
+- `ORDER BY created_at DESC, id DESC` — Because journal IDs are UUIDv4 (random, not sequential), sorting only by timestamp is non-deterministic when two journals share the same millisecond. The `id DESC` tie-breaker guarantees stable keyset pagination.
+
+---
+
+## 3. Concurrency & Locking (Mutation API)
+
+### The Deadlock Problem
+
+Consider two concurrent requests:
+
+- **Request A**: Transfer from Account `X` to Account `Y`. Locks `X`, then tries to lock `Y`.
+- **Request B**: Transfer from Account `Y` to Account `X`. Locks `Y`, then tries to lock `X`.
+
+Both requests hold one lock and are waiting for the other. This is a textbook deadlock. PostgreSQL will detect it and kill one transaction — but the application must handle the retry, and under high concurrency, this causes cascading failures.
+
+### The Lexicographical Locking Solution
+
+Konto prevents deadlocks entirely by **never allowing arbitrary lock ordering**.
+
+Before any mutation (`transfer`, `hold`, `commitHold`), the engine:
+
+1. Collects all account IDs involved in the operation.
+2. Sorts them lexicographically (UUID string sort).
+3. Acquires `FOR UPDATE` locks in that exact order.
+
+```typescript
+// From transfer.ts
+function sortedUniqueIds(entries: { accountId: string }[]): string[] {
+  return [...new Set(entries.map((e) => e.accountId))].sort();
+}
+
+// Then in the transaction:
+const locked = await tx`
+  SELECT id FROM konto_accounts
+  WHERE id = ANY(${accountIds}::uuid[])
+  ORDER BY id
+  FOR UPDATE
+`;
+```
+
+Because every concurrent request sorts locks identically, two requests involving the same accounts will always acquire them in the same order. Deadlocks become mathematically impossible.
+
+This pattern is applied uniformly across:
+- `transfer()` — All entry leg accounts.
+- `hold()` — Sender and recipient.
+- `commitHold()` — Sender and recipient (re-locked during settlement).
+
+### Double Validation Under Lock
+
+The `transfer` function validates the zero-sum constraint **twice**:
+
+1. **Before the transaction** — A fast pre-check to reject obviously invalid payloads without opening a database transaction.
+2. **After acquiring locks** — Re-validated under the pessimistic lock to ensure no concurrent mutation has changed the state between validation and execution.
+
+```typescript
+// Pre-check (fast, no DB)
+assertValidEntries(parsed.entries);
+
+// ... acquire locks, derive balances ...
+
+// Re-check under lock (guarantees consistency)
+assertValidEntries(parsed.entries);
+```
+
+---
+
+## 4. The Escrow System
+
+Holds implement a two-phase commit pattern for scenarios where funds must be reserved before a final decision is made (ride-sharing fare estimates, marketplace order holds, pre-authorization charges).
+
+### Lifecycle
+
+```
+hold()  ──────┬──────▶  commitHold()  ──▶  Permanent journal entry created.
+              │                              Hold row deleted.
+              │
+              └──────▶  rollbackHold() ──▶  Hold row deleted. 
+                                             Funds released. No journal.
+```
+
+### Phase 1: `hold()`
+
+1. Validate the payload (sender, recipient, amount).
+2. Sort account IDs lexicographically. Acquire `FOR UPDATE` locks.
+3. Derive the sender's available balance: `Σ entries − Σ active holds`.
+4. If `available < hold_amount`, throw `KontoInsufficientFundsError`.
+5. Insert a row into `konto_holds`.
+
+**The hold immediately reduces available balance** — any subsequent `getBalance()` or `transfer()` will see the reduced number, preventing double-spending.
+
+### Phase 2a: `commitHold()`
+
+1. Lock the hold row with `FOR UPDATE` (prevents concurrent commit/rollback).
+2. Lock the sender and recipient accounts (lexicographical order).
+3. **Delete** the hold row.
+4. Create a permanent journal with two entry legs: debit sender, credit recipient.
+
+The hold is atomically converted into an immutable ledger entry within a single transaction.
+
+### Phase 2b: `rollbackHold()`
+
+1. Lock the hold row with `FOR UPDATE`.
+2. Lock the sender account.
+3. **Delete** the hold row.
+
+No journal is created. The earmarked funds are silently released back to the sender's available balance.
+
+### Conservation of Value
+
+The escrow system has been battle-tested with a pathological benchmark: 1000+ concurrent transfers and holds executing simultaneously against a shared set of accounts. The test verifies:
+
+- **Zero deadlocks** — The lexicographical locking strategy holds under extreme concurrency.
+- **Strict conservation** — `Σ all balances` before the test equals `Σ all balances` after. No money is created or destroyed.

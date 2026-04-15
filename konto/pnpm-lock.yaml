@@ -7,6 +7,13 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@konto/core':
+        specifier: workspace:^
+        version: link:packages/core
+      postgres:
+        specifier: ^3.4.5
+        version: 3.4.9
     devDependencies:
       prettier:
         specifier: ^3.7.4

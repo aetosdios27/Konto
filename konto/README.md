@@ -1,159 +1,169 @@
-# Turborepo starter
+# Konto
 
-This Turborepo starter is maintained by the Turborepo core team.
+**The financial primitive your Postgres database is missing.**
 
-## Using this example
+---
 
-Run the following command:
+## The Problem
 
-```sh
-npx create-turbo@latest
+Somewhere in your codebase, there's a line that looks like this:
+
+```sql
+UPDATE users SET balance = balance + 50 WHERE id = 'user_abc';
 ```
 
-## What's inside?
+It works. Until it doesn't.
 
-This Turborepo includes the following packages/apps:
+Two requests arrive simultaneously. Both read `balance = 100`. Both write `balance = 150`. You just created $50 out of thin air. There is no audit trail. There is no rollback. There is no way to know it happened until a customer calls you.
 
-### Apps and Packages
+This is not a theoretical problem. It is the #1 cause of financial discrepancies in production systems that treat money as a mutable integer on a user row.
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+---
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+## The Solution
 
-### Utilities
+**Konto** is a zero-dependency, ACID-compliant, double-entry accounting engine that lives inside your PostgreSQL database. It replaces ad-hoc balance columns with an immutable, append-only ledger where every cent is accounted for, every movement is atomic, and every balance is derived — never stored.
 
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
+```
+npm install @konto/core @konto/cli
 ```
 
-Without global `turbo`, use your package manager:
+---
 
-```sh
-cd my-turborepo
-npx turbo build
-pnpm dlx turbo build
-pnpm exec turbo build
+## The Three Pillars
+
+### 1. Deadlock Immune
+
+Every mutation — transfers, holds, commits — acquires pessimistic `FOR UPDATE` row locks in **deterministic lexicographical order**. Two concurrent requests trying to lock accounts `A → B` and `B → A` will always resolve to `A → B`. Deadlocks are mathematically impossible.
+
+### 2. Zero-Copy Balance Derivation
+
+Balances are never stored. They are derived on the fly from the immutable entry log, with active escrow holds subtracted in real-time:
+
+$$B_a = \sum \text{Entries}(a) - \sum \text{ActiveHolds}(a)$$
+
+No stale caches. No sync drift. The number is always correct.
+
+### 3. Type-Safe SDK Compiler
+
+Define your business rules in a `konto.config.ts` file. Run `npx @konto/cli generate`. Get a custom TypeScript client where `transfer()` autocompletes your application-specific metadata fields — `invoice_id`, `order_ref`, `tax_class` — enforced at compile time.
+
+---
+
+## Quickstart
+
+### Step 1: Inject the Schema
+
+```bash
+npx @konto/cli init
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+This connects to your Postgres instance and creates four tables: `konto_accounts`, `konto_journals`, `konto_entries`, and `konto_holds`.
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+### Step 2: Define Your Business Schema
 
-```sh
-turbo build --filter=docs
+Create a `konto.config.ts` in your project root:
+
+```typescript
+import { defineLedger } from "@konto/cli";
+
+export default defineLedger({
+  transfer: {
+    invoice_id: "string",
+    notes: "string?",              // optional
+    tax_class: "enum:['GST', 'VAT', 'EXEMPT']",
+  },
+});
 ```
 
-Without global `turbo`:
+### Step 3: Generate the Typed Client
 
-```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+```bash
+npx @konto/cli generate
 ```
 
-### Develop
+This outputs a strictly-typed SDK to `node_modules/.konto` — instantly available across your entire project.
 
-To develop all apps and packages, run the following command:
+### Step 4: Move Money
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+```typescript
+import postgres from "postgres";
+import { transfer, getBalance } from ".konto";
 
-```sh
-cd my-turborepo
-turbo dev
+const sql = postgres(process.env.DATABASE_URL!);
+
+// Execute an atomic, balanced, audited transfer
+const { journalId } = await transfer(sql, {
+  entries: [
+    { accountId: MERCHANT_ID, amount: -5000n },   // debit ₹50.00
+    { accountId: PLATFORM_ID, amount: 5000n },     // credit ₹50.00
+  ],
+  metadata: {
+    invoice_id: "INV-2026-0042",   // ← autocompleted, type-checked
+  },
+});
+
+// Query the true liquid balance (entries minus active holds)
+const { balance } = await getBalance(sql, MERCHANT_ID);
+console.log(`Available: ₹${balance / 100n}`);
 ```
 
-Without global `turbo`, use your package manager:
+That's it. Five lines to replace `UPDATE ... SET balance = balance + n` with a production-grade, auditable, race-condition-proof financial system.
 
-```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
+---
+
+## Core API
+
+| Function | Description |
+| --- | --- |
+| `transfer(sql, payload)` | Atomic multi-leg journal entry with zero-sum enforcement |
+| `hold(sql, payload)` | Earmark funds without moving them (escrow phase 1) |
+| `commitHold(sql, holdId)` | Settle a hold into the permanent ledger |
+| `rollbackHold(sql, holdId)` | Release a hold, restoring available balance |
+| `getAccount(sql, accountId)` | Fetch account metadata |
+| `getBalance(sql, accountId)` | Derived liquid balance: `Σ entries − Σ holds` |
+| `getJournals(sql, accountId, opts)` | Paginated, hydrated transaction history |
+
+---
+
+## Architecture
+
+- **[Architecture & Physics](./docs/architecture.md)** — Schema design, concurrency model, escrow lifecycle, and the V8 float decay patch.
+- **[Client Generation](./docs/client-generation.md)** — How `defineLedger` and the `.konto` proxy trick work under the hood.
+- **[Codebase Explanation](./docs/codebase_explanation.md)** — Full module-by-module status and implementation notes.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Database | PostgreSQL 16+ |
+| Driver | `postgres.js` (zero-dependency, pipelined) |
+| Validation | `zod` with native `bigint` schemas |
+| CLI | `cac` + `@clack/prompts` + `picocolors` |
+| Config Loader | `jiti` (runtime TS import) |
+| Testing | `vitest` + `@testcontainers/postgresql` |
+| Bundler | `tsup` (ESM, minified) |
+
+---
+
+## Monorepo Structure
+
+```
+konto/
+├── packages/
+│   ├── core/        # The engine. transfer, hold, read, schema, errors.
+│   ├── cli/         # Schema injector + typed client generator.
+│   └── types/       # (Planned) Shared type definitions.
+├── apps/
+│   └── studio/      # (Planned) Visual ledger dashboard.
+├── docs/            # Architecture, client generation, codebase docs.
+└── konto.config.ts  # Example developer configuration.
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+---
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+## License
 
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+MIT
