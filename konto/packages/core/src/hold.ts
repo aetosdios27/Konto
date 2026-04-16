@@ -1,4 +1,4 @@
-import postgres from "postgres";
+import type { KontoQueryExecutor } from "@konto/types";
 import { HoldPayloadSchema, jsonSchema } from "./schema";
 import { z } from "zod";
 import {
@@ -14,7 +14,7 @@ function sortedUniqueIds(accountIds: string[]): string[] {
 
 // ── hold ───────────────────────────────────────────────────────────────
 export async function hold(
-  db: ReturnType<typeof postgres>,
+  db: KontoQueryExecutor,
   payload: unknown,
 ): Promise<{ holdId: string }> {
   const parsed = HoldPayloadSchema.parse(payload);
@@ -101,7 +101,7 @@ export async function hold(
 
 // ── commitHold ───────────────────────────────────────────────────────────────
 export async function commitHold(
-  db: ReturnType<typeof postgres>,
+  db: KontoQueryExecutor,
   holdId: string,
   metadata?: unknown,
 ): Promise<{ journalId: string }> {
@@ -194,7 +194,7 @@ export async function commitHold(
 
 // ── rollbackHold ─────────────────────────────────────────────────────────────
 export async function rollbackHold(
-  db: ReturnType<typeof postgres>,
+  db: KontoQueryExecutor,
   holdId: string,
 ): Promise<{ success: boolean }> {
   return db.begin(async (tx) => {

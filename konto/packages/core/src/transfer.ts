@@ -1,4 +1,4 @@
-import postgres from "postgres";
+import type { KontoQueryExecutor } from "@konto/types";
 import { TransferPayloadSchema } from "./schema";
 import {
   KontoInsufficientFundsError,
@@ -34,7 +34,7 @@ function sortedUniqueIds(entries: { accountId: string }[]): string[] {
 
 // ── transfer ───────────────────────────────────────────────────────────────
 export async function transfer(
-  db: ReturnType<typeof postgres>,
+  db: KontoQueryExecutor,
   payload: unknown,
 ): Promise<{ journalId: string }> {
   // 1. Runtime validation

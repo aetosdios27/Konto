@@ -52,14 +52,13 @@ Define your business rules in a `konto.config.ts` file. Run `npx @konto/cli gene
 
 ## Quickstart
 
-### Step 1: Inject the Schema
+### Step 1: Initialize the Migration Crawler
 
 ```bash
 npx @konto/cli init
 ```
 
-This connects to your Postgres instance and creates five structures: `konto_accounts`, `konto_journals`, `konto_entries`, `konto_holds` (with built-in Expiration TTL semantics), and `konto_balance_snapshots`.
-It also seamlessly injects an optimized `uuid_generate_v7()` function to structure indexing logically without fragmentation.
+This connects to your Postgres instance, sets up the `_konto_migrations` tracking layer, and seamlessly applies the foundational `0001_initial_state.sql` schema required to boot the ledger framework.
 
 ### Step 2: Define Your Business Schema
 
@@ -88,13 +87,13 @@ This outputs a strictly-typed SDK to `node_modules/.konto` — instantly availab
 ### Step 4: Move Money
 
 ```typescript
-import postgres from "postgres";
+import { createVercelAdapter } from "@konto/adapters";
 import { transfer, getBalance } from ".konto";
 
-const sql = postgres(process.env.DATABASE_URL!);
+const db = createVercelAdapter(process.env.DATABASE_URL!);
 
 // Execute an atomic, balanced, audited transfer
-const { journalId } = await transfer(sql, {
+const { journalId } = await transfer(db, {
   entries: [
     { accountId: MERCHANT_ID, amount: -5000n },   // debit ₹50.00
     { accountId: PLATFORM_ID, amount: 5000n },     // credit ₹50.00
@@ -105,7 +104,7 @@ const { journalId } = await transfer(sql, {
 });
 
 // Query the true liquid balance (entries minus active holds)
-const { balance } = await getBalance(sql, MERCHANT_ID);
+const { balance } = await getBalance(db, MERCHANT_ID);
 console.log(`Available: ₹${balance / 100n}`);
 ```
 
@@ -140,7 +139,7 @@ That's it. Five lines to replace `UPDATE ... SET balance = balance + n` with a p
 | Layer | Technology |
 | --- | --- |
 | Database | PostgreSQL 16+ |
-| Driver | `postgres.js` (zero-dependency, pipelined) |
+| Driver Layer | Inversion of Control via `KontoQueryExecutor` (`postgres.js`, `@vercel/postgres`, etc.) |
 | Validation | `zod` with native `bigint` schemas |
 | CLI | `cac` + `@clack/prompts` + `picocolors` |
 | Config Loader | `jiti` (runtime TS import) |
@@ -155,8 +154,9 @@ That's it. Five lines to replace `UPDATE ... SET balance = balance + n` with a p
 konto/
 ├── packages/
 │   ├── core/        # The engine. transfer, hold, read, schema, errors.
-│   ├── cli/         # Schema injector + typed client generator.
-│   └── types/       # (Planned) Shared type definitions.
+│   ├── cli/         # Deterministic migration runner + client generator.
+│   ├── types/       # Generic Database Driver abstractions.
+│   └── adapters/    # First-party adapters (Vercel Edge, etc.)
 ├── apps/
 │   └── studio/      # (Planned) Visual ledger dashboard.
 ├── docs/            # Architecture, client generation, codebase docs.

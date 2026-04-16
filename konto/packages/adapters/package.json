@@ -1,0 +1,10 @@
+{
+  "name": "@konto/adapters",
+  "version": "1.0.0",
+  "main": "src/vercel.ts",
+  "types": "src/vercel.ts",
+  "dependencies": {
+    "@konto/types": "workspace:*",
+    "@vercel/postgres": "^0.10.0"
+  }
+}
