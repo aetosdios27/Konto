@@ -84,20 +84,27 @@ export async function transfer(
       const rows = await tx<{ account_id: string; balance: string }[]>`
         SELECT
           ids.id AS account_id,
-          (COALESCE(e.entry_sum, 0) - COALESCE(h.hold_sum, 0))::text AS balance
+          (COALESCE(s.balance, 0) + COALESCE(e.entry_sum, 0) - COALESCE(h.hold_sum, 0))::text AS balance
         FROM unnest(${debitAccountIds}::uuid[]) AS ids(id)
-        LEFT JOIN (
-          SELECT account_id, SUM(amount) as entry_sum
+        LEFT JOIN LATERAL (
+          SELECT balance, snapshot_at
+          FROM konto_balance_snapshots
+          WHERE account_id = ids.id
+          ORDER BY snapshot_at DESC
+          LIMIT 1
+        ) s ON true
+        LEFT JOIN LATERAL (
+          SELECT SUM(amount) as entry_sum
           FROM konto_entries
-          WHERE account_id = ANY(${debitAccountIds}::uuid[])
-          GROUP BY account_id
-        ) e ON e.account_id = ids.id
-        LEFT JOIN (
-          SELECT account_id, SUM(amount) as hold_sum
+          WHERE account_id = ids.id
+            AND (s.snapshot_at IS NULL OR created_at > s.snapshot_at)
+        ) e ON true
+        LEFT JOIN LATERAL (
+          SELECT SUM(amount) as hold_sum
           FROM konto_holds
-          WHERE account_id = ANY(${debitAccountIds}::uuid[])
-          GROUP BY account_id
-        ) h ON h.account_id = ids.id
+          WHERE account_id = ids.id
+            AND (expires_at IS NULL OR NOW() <= expires_at)
+        ) h ON true
       `;
       for (const r of rows) {
         balances.set(r.account_id, BigInt(r.balance));

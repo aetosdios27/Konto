@@ -38,11 +38,11 @@ Every mutation — transfers, holds, commits — acquires pessimistic `FOR UPDAT
 
 ### 2. Zero-Copy Balance Derivation
 
-Balances are never stored. They are derived on the fly from the immutable entry log, with active escrow holds subtracted in real-time:
+Balances are never stored. They are derived on the fly from the immutable entry log, heavily optimized using O(1) mathematical **Balance Snapshots**, with active unexpired escrow holds subtracted in real-time:
 
-$$B_a = \sum \text{Entries}(a) - \sum \text{ActiveHolds}(a)$$
+$$B_a = \text{Snapshot}(a) + \sum \text{Entries}_{>\text{snapshot}}(a) - \sum \text{ActiveHolds}(a)$$
 
-No stale caches. No sync drift. The number is always correct.
+No stale caches. No sync drift. The number is always correct and fetches run in `O(1)` bounds regardless of transaction history depth.
 
 ### 3. Type-Safe SDK Compiler
 
@@ -58,7 +58,8 @@ Define your business rules in a `konto.config.ts` file. Run `npx @konto/cli gene
 npx @konto/cli init
 ```
 
-This connects to your Postgres instance and creates four tables: `konto_accounts`, `konto_journals`, `konto_entries`, and `konto_holds`.
+This connects to your Postgres instance and creates five structures: `konto_accounts`, `konto_journals`, `konto_entries`, `konto_holds` (with built-in Expiration TTL semantics), and `konto_balance_snapshots`.
+It also seamlessly injects an optimized `uuid_generate_v7()` function to structure indexing logically without fragmentation.
 
 ### Step 2: Define Your Business Schema
 
@@ -121,7 +122,7 @@ That's it. Five lines to replace `UPDATE ... SET balance = balance + n` with a p
 | `commitHold(sql, holdId)` | Settle a hold into the permanent ledger |
 | `rollbackHold(sql, holdId)` | Release a hold, restoring available balance |
 | `getAccount(sql, accountId)` | Fetch account metadata |
-| `getBalance(sql, accountId)` | Derived liquid balance: `Σ entries − Σ holds` |
+| `getBalance(sql, accountId)` | Derived liquid balance via snapshots: `Snapshot + Σ entries − Σ holds` |
 | `getJournals(sql, accountId, opts)` | Paginated, hydrated transaction history |
 
 ---

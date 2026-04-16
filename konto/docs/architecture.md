@@ -14,7 +14,7 @@ The node table. Every financial entity (user wallet, merchant account, platform 
 
 ```sql
 CREATE TABLE konto_accounts (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
   name        TEXT NOT NULL,
   currency    TEXT NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
   metadata    JSONB,
@@ -24,7 +24,7 @@ CREATE TABLE konto_accounts (
 ```
 
 **Design decisions:**
-- **UUIDv4 primary keys** — Eliminates sequential ID guessing and allows distributed ID generation without coordination.
+- **UUIDv7 primary keys** — Eliminates fragmentation of B-Trees at extreme scale. Allows keyset pagination on temporal sequences instead of pure randomness.
 - **ISO 4217 currency check** — The `CHECK (currency ~ '^[A-Z]{3}$')` constraint rejects malformed currency codes at the database level.
 - **`ON DELETE RESTRICT`** on all foreign keys pointing here — You cannot delete an account that has entries or active holds. The ledger is permanent.
 
@@ -96,27 +96,36 @@ Konto never stores a balance. Every call to `getBalance()` derives the number fr
 
 For any account `a`:
 
-$$B_a = \sum_{e \in \text{entries}(a)} e.\text{amount} - \sum_{h \in \text{holds}(a)} h.\text{amount}$$
+$$B_a = \text{Snapshot}(a) + \sum_{e \in \text{entries}_{>snap}(a)} e.\text{amount} - \sum_{h \in \text{holds}_{active}(a)} h.\text{amount}$$
 
-This is computed in a single SQL query using two subquery `LEFT JOIN`s:
+This avoids O(N) performance death loops by utilizing `LATERAL JOIN`s combined with balance snapshots:
 
 ```sql
 SELECT
   a.id,
   a.currency,
+  COALESCE(s.balance, 0)::text AS snapshot_balance,
   COALESCE(e.total, 0)::text AS entries_sum,
   COALESCE(h.total, 0)::text AS holds_sum
 FROM konto_accounts a
-LEFT JOIN (
-  SELECT account_id, SUM(amount) as total
-  FROM konto_entries WHERE account_id = $1
-  GROUP BY account_id
-) e ON e.account_id = a.id
-LEFT JOIN (
-  SELECT account_id, SUM(amount) as total
-  FROM konto_holds WHERE account_id = $1
-  GROUP BY account_id
-) h ON h.account_id = a.id
+LEFT JOIN LATERAL (
+  SELECT balance, snapshot_at 
+  FROM konto_balance_snapshots 
+  WHERE account_id = a.id 
+  ORDER BY snapshot_at DESC 
+  LIMIT 1
+) s ON true
+LEFT JOIN LATERAL (
+  SELECT SUM(amount) as total
+  FROM konto_entries
+  WHERE account_id = a.id 
+    AND (s.snapshot_at IS NULL OR created_at > s.snapshot_at)
+) e ON true
+LEFT JOIN LATERAL (
+  SELECT SUM(amount) as total
+  FROM konto_holds
+  WHERE account_id = a.id AND (expires_at IS NULL OR NOW() <= expires_at)
+) h ON true
 WHERE a.id = $1
 ```
 

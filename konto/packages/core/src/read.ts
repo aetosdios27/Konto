@@ -27,26 +27,33 @@ export async function getBalance(
 ): Promise<{ accountId: string; balance: bigint; currency: string }> {
   // Join to get accounts, explicitly convert sums to TEXT mathematically checking for BigInt float decay boundaries
   const result = await sql<
-    { id: string; currency: string; entries_sum: string; holds_sum: string }[]
+    { id: string; currency: string; snapshot_balance: string; entries_sum: string; holds_sum: string }[]
   >`
     SELECT 
       a.id,
       a.currency,
+      COALESCE(s.balance, 0)::text AS snapshot_balance,
       COALESCE(e.total, 0)::text AS entries_sum,
       COALESCE(h.total, 0)::text AS holds_sum
     FROM konto_accounts a
-    LEFT JOIN (
-      SELECT account_id, SUM(amount) as total
+    LEFT JOIN LATERAL (
+      SELECT balance, snapshot_at 
+      FROM konto_balance_snapshots 
+      WHERE account_id = a.id 
+      ORDER BY snapshot_at DESC 
+      LIMIT 1
+    ) s ON true
+    LEFT JOIN LATERAL (
+      SELECT SUM(amount) as total
       FROM konto_entries
-      WHERE account_id = ${accountId}
-      GROUP BY account_id
-    ) e ON e.account_id = a.id
-    LEFT JOIN (
-      SELECT account_id, SUM(amount) as total
+      WHERE account_id = a.id 
+        AND (s.snapshot_at IS NULL OR created_at > s.snapshot_at)
+    ) e ON true
+    LEFT JOIN LATERAL (
+      SELECT SUM(amount) as total
       FROM konto_holds
-      WHERE account_id = ${accountId}
-      GROUP BY account_id
-    ) h ON h.account_id = a.id
+      WHERE account_id = a.id AND (expires_at IS NULL OR NOW() <= expires_at)
+    ) h ON true
     WHERE a.id = ${accountId}
   `;
 
@@ -55,11 +62,12 @@ export async function getBalance(
     throw new KontoAccountNotFoundError(`konto: account not found: ${accountId}`);
   }
 
+  const snapshotBalance = BigInt(row.snapshot_balance);
   const entriesSum = BigInt(row.entries_sum);
   const holdsSum = BigInt(row.holds_sum);
   
-  // Explicit logic resolving B_a = Sum(Entries) - Sum(Holds)
-  const balance = entriesSum - holdsSum;
+  // Explicit logic resolving B_a = Snapshot + Sum(Entries > Snapshot) - Sum(Active Holds)
+  const balance = snapshotBalance + entriesSum - holdsSum;
 
   return {
     accountId: row.id,

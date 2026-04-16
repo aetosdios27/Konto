@@ -51,20 +51,27 @@ export async function hold(
     const rows = await tx<{ account_id: string; balance: string }[]>`
         SELECT
           ids.id AS account_id,
-          (COALESCE(e.entry_sum, 0) - COALESCE(h.hold_sum, 0))::text AS balance
+          (COALESCE(s.balance, 0) + COALESCE(e.entry_sum, 0) - COALESCE(h.hold_sum, 0))::text AS balance
         FROM unnest(ARRAY[${parsed.accountId}]::uuid[]) AS ids(id)
-        LEFT JOIN (
-          SELECT account_id, SUM(amount) as entry_sum
+        LEFT JOIN LATERAL (
+          SELECT balance, snapshot_at
+          FROM konto_balance_snapshots
+          WHERE account_id = ids.id
+          ORDER BY snapshot_at DESC
+          LIMIT 1
+        ) s ON true
+        LEFT JOIN LATERAL (
+          SELECT SUM(amount) as entry_sum
           FROM konto_entries
-          WHERE account_id = ${parsed.accountId}
-          GROUP BY account_id
-        ) e ON e.account_id = ids.id
-        LEFT JOIN (
-          SELECT account_id, SUM(amount) as hold_sum
+          WHERE account_id = ids.id
+            AND (s.snapshot_at IS NULL OR created_at > s.snapshot_at)
+        ) e ON true
+        LEFT JOIN LATERAL (
+          SELECT SUM(amount) as hold_sum
           FROM konto_holds
-          WHERE account_id = ${parsed.accountId}
-          GROUP BY account_id
-        ) h ON h.account_id = ids.id
+          WHERE account_id = ids.id
+            AND (expires_at IS NULL OR NOW() <= expires_at)
+        ) h ON true
     `;
 
     const currentBalance = rows[0] ? BigInt(rows[0].balance) : 0n;
@@ -74,12 +81,13 @@ export async function hold(
     }
 
     const holdRows = await tx<{ id: string }[]>`
-      INSERT INTO konto_holds (account_id, recipient_id, amount, idempotency_key)
+      INSERT INTO konto_holds (account_id, recipient_id, amount, idempotency_key, expires_at)
       VALUES (
         ${parsed.accountId},
         ${parsed.recipientId},
         ${parsed.amount.toString()},
-        ${parsed.idempotencyKey ?? null}
+        ${parsed.idempotencyKey ?? null},
+        ${parsed.ttlMs !== undefined ? tx`NOW() + (${parsed.ttlMs} || ' milliseconds')::interval` : null}
       )
       RETURNING id
     `;

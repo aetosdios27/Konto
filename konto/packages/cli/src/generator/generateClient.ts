@@ -11,9 +11,16 @@ function parseType(value: string): string {
   if (cleanValue.startsWith("enum:[")) {
     const arrString = cleanValue.substring(5); // "['A', 'B']"
     try {
-      const parsed = eval(arrString);
-      if (Array.isArray(parsed)) {
-        return parsed.map((item) => `"${item}"`).join(" | ");
+      const match = arrString.match(/^\[(.*)\]$/);
+      if (match && match[1]) {
+        const items = match[1].split(',').map(s => {
+          const trimmed = s.trim();
+          return trimmed.replace(/^['"](.*)['"]$/, '$1');
+        }).filter(Boolean);
+        
+        if (items.length > 0) {
+          return items.map((item) => `"${item}"`).join(" | ");
+        }
       }
     } catch {
       return "any";

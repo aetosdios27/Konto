@@ -30,6 +30,7 @@ export const HoldPayloadSchema = z.object({
   accountId: z.string().uuid(),
   recipientId: z.string().uuid(),
   amount: z.bigint(),
+  ttlMs: z.number().int().positive().optional(),
   metadata: z.record(jsonSchema).optional(),
 });
 
