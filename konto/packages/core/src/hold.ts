@@ -22,13 +22,21 @@ export async function hold(
   if (parsed.accountId === parsed.recipientId) {
     throw new Error("konto: hold sender and recipient cannot be the same");
   }
+  
+  if (parsed.amount <= 0n) {
+    throw new Error("konto: hold amount must be positive");
+  }
+
+  if (parsed.ttlMs !== undefined && parsed.ttlMs > 30 * 24 * 60 * 60 * 1000) {
+    throw new Error("konto: hold ttlMs exceeds 30 days maximum");
+  }
 
   return db.begin(async (tx) => {
-    // Idempotency check
+    // Idempotency check scoped to account
     if (parsed.idempotencyKey) {
       const existing = await tx<{ id: string }[]>`
         SELECT id FROM konto_holds
-        WHERE idempotency_key = ${parsed.idempotencyKey}
+        WHERE account_id = ${parsed.accountId} AND idempotency_key = ${parsed.idempotencyKey}
         LIMIT 1
       `;
       if (existing.length > 0) throw new KontoDuplicateTransactionError();
@@ -36,8 +44,8 @@ export async function hold(
 
     // Lock accounts pessimistically in lexicographical order to prevent deadlocks
     const accountIds = sortedUniqueIds([parsed.accountId, parsed.recipientId]);
-    const locked = await tx<{ id: string }[]>`
-      SELECT id FROM konto_accounts
+    const locked = await tx<{ id: string, currency: string }[]>`
+      SELECT id, currency FROM konto_accounts
       WHERE id = ANY(${accountIds}::uuid[])
       ORDER BY id
       FOR UPDATE
@@ -45,6 +53,12 @@ export async function hold(
 
     if (locked.length !== accountIds.length) {
       throw new Error(`konto: accounts not found for hold`);
+    }
+
+    // Check currency match
+    const currencies = new Set(locked.map(r => r.currency));
+    if (currencies.size > 1) {
+      throw new Error("konto: cross-currency holds are not currently supported");
     }
 
     // Get balance of sender
@@ -70,6 +84,7 @@ export async function hold(
           SELECT SUM(amount) as hold_sum
           FROM konto_holds
           WHERE account_id = ids.id
+            AND status = 'PENDING'
             AND (expires_at IS NULL OR NOW() <= expires_at)
         ) h ON true
     `;
@@ -80,14 +95,17 @@ export async function hold(
       throw new KontoInsufficientFundsError();
     }
 
+    const expiresAt = parsed.ttlMs !== undefined ? new Date(Date.now() + parsed.ttlMs) : null;
+
     const holdRows = await tx<{ id: string }[]>`
-      INSERT INTO konto_holds (account_id, recipient_id, amount, idempotency_key, expires_at)
+      INSERT INTO konto_holds (account_id, recipient_id, amount, idempotency_key, expires_at, status)
       VALUES (
         ${parsed.accountId},
         ${parsed.recipientId},
         ${parsed.amount.toString()},
         ${parsed.idempotencyKey ?? null},
-        ${parsed.ttlMs !== undefined ? tx`NOW() + (${parsed.ttlMs} || ' milliseconds')::interval` : null}
+        ${expiresAt},
+        'PENDING'
       )
       RETURNING id
     `;
@@ -119,7 +137,7 @@ export async function commitHold(
       amount: string;
     }[]>`
       SELECT id, account_id, recipient_id, amount FROM konto_holds
-      WHERE id = ${holdId}
+      WHERE id = ${holdId} AND status = 'PENDING' AND (expires_at IS NULL OR NOW() <= expires_at)
       FOR UPDATE
     `;
 
@@ -134,7 +152,7 @@ export async function commitHold(
       internalHold.recipient_id,
     ]);
 
-    // Pessimistic locks for the affected accounts (Lexicographically sorted to preserve deadlock immunity)
+    // Pessimistic locks for the affected accounts
     const locked = await tx<{ id: string }[]>`
       SELECT id FROM konto_accounts
       WHERE id = ANY(${accountIds}::uuid[])
@@ -146,13 +164,47 @@ export async function commitHold(
       throw new Error(`konto: accounts not found for hold commit`);
     }
 
-    // Delete the hold now
+    const amountBig = BigInt(internalHold.amount);
+
+    // Re-verify balance of sender (excluding this specific hold since we are committing it)
+    const rows = await tx<{ account_id: string; balance: string }[]>`
+        SELECT
+          ids.id AS account_id,
+          (COALESCE(s.balance, 0) + COALESCE(e.entry_sum, 0) - COALESCE(h.hold_sum, 0))::text AS balance
+        FROM unnest(ARRAY[${internalHold.account_id}]::uuid[]) AS ids(id)
+        LEFT JOIN LATERAL (
+          SELECT balance, snapshot_at
+          FROM konto_balance_snapshots
+          WHERE account_id = ids.id
+          ORDER BY snapshot_at DESC
+          LIMIT 1
+        ) s ON true
+        LEFT JOIN LATERAL (
+          SELECT SUM(amount) as entry_sum
+          FROM konto_entries
+          WHERE account_id = ids.id
+            AND (s.snapshot_at IS NULL OR created_at > s.snapshot_at)
+        ) e ON true
+        LEFT JOIN LATERAL (
+          SELECT SUM(amount) as hold_sum
+          FROM konto_holds
+          WHERE account_id = ids.id AND id != ${holdId}
+            AND status = 'PENDING'
+            AND (expires_at IS NULL OR NOW() <= expires_at)
+        ) h ON true
+    `;
+
+    const currentBalance = rows[0] ? BigInt(rows[0].balance) : 0n;
+    if (currentBalance < amountBig) {
+      throw new KontoInsufficientFundsError();
+    }
+
+    // Update status instead of delete
     await tx`
-        DELETE FROM konto_holds WHERE id = ${holdId}
+        UPDATE konto_holds SET status = 'COMMITTED' WHERE id = ${holdId}
     `;
 
     // Perform the transfer
-    const amountBig = BigInt(internalHold.amount);
     const entries = [
       { accountId: internalHold.account_id, amount: -amountBig },
       { accountId: internalHold.recipient_id, amount: amountBig },
@@ -166,8 +218,9 @@ export async function commitHold(
     const metadataJson = tx.json(parsedMetadata);
 
     const journalRows = await tx<{ id: string }[]>`
-      INSERT INTO konto_journals (description, metadata, idempotency_key)
+      INSERT INTO konto_journals (account_id, description, metadata, idempotency_key)
       VALUES (
+        ${internalHold.account_id},
         ${description},
         ${metadataJson},
         NULL
@@ -201,7 +254,7 @@ export async function rollbackHold(
     // Lock the hold record so no one else can commit/rollback
     const holdLocked = await tx<{ id: string; account_id: string }[]>`
       SELECT id, account_id FROM konto_holds
-      WHERE id = ${holdId}
+      WHERE id = ${holdId} AND status = 'PENDING'
       FOR UPDATE
     `;
 
@@ -218,9 +271,9 @@ export async function rollbackHold(
       FOR UPDATE
     `;
 
-    // Purge the hold
+    // Mark as rolled back
     await tx`
-        DELETE FROM konto_holds WHERE id = ${holdId}
+        UPDATE konto_holds SET status = 'ROLLED_BACK' WHERE id = ${holdId}
     `;
 
     return { success: true };

@@ -9,7 +9,7 @@ This document explains how Konto's TypeScript SDK generator works — from the d
 Most ledger libraries accept metadata as `Record<string, any>` or `unknown`. This means a transfer call looks like this:
 
 ```typescript
-await transfer(sql, {
+await transfer({
   entries: [...],
   metadata: {
     invoce_id: "INV-001",  // ← typo. "invoce" instead of "invoice". No error.
@@ -20,49 +20,37 @@ await transfer(sql, {
 
 This compiles. This deploys. And three months later, an accounting reconciliation fails because 12,000 transfers are missing their `order_ref` field, and 400 have a misspelled `invoce_id` that no downstream system can parse.
 
-The root cause: **the type system had no opinion about what metadata should contain.**
+The root cause: **the type system and runtime validation had no opinion about what metadata should contain.**
 
 ---
 
 ## The Solution: `konto.config.ts`
 
-Konto solves this by letting you define your metadata schema once, then generating a typed client that enforces it at compile time.
+Konto solves this by letting you define your metadata schema once using **Zod**, then generating a typed client that enforces it at compile time *and* validates it at runtime.
 
 ### The `defineLedger` API
 
 Create a `konto.config.ts` in your project root:
 
 ```typescript
+import { z } from "zod";
 import { defineLedger } from "@konto/cli";
 
 export default defineLedger({
-  transfer: {
-    invoice_id: "string",
-    order_ref: "string",
-    notes: "string?",
-    tax_class: "enum:['GST', 'VAT', 'EXEMPT']",
-  },
-  hold: {
-    reason: "string",
-  },
-  account: {
-    status: "enum:['ACTIVE', 'FROZEN', 'CLOSED']",
-  },
+  transfer: z.object({
+    invoice_id: z.string(),
+    order_ref: z.string(),
+    notes: z.string().optional(),
+    tax_class: z.enum(['GST', 'VAT', 'EXEMPT']),
+  }),
+  hold: z.object({
+    reason: z.string(),
+  }),
+  account: z.object({
+    status: z.enum(['ACTIVE', 'FROZEN', 'CLOSED']),
+  }),
 });
 ```
-
-### Supported Type Syntax
-
-| Syntax | Generated TypeScript | Description |
-| --- | --- | --- |
-| `"string"` | `invoice_id: string;` | Required string field |
-| `"number"` | `amount_override: number;` | Required number field |
-| `"boolean"` | `is_refund: boolean;` | Required boolean field |
-| `"string?"` | `notes?: string;` | Optional string field |
-| `"number?"` | `priority?: number;` | Optional number field |
-| `"enum:['A', 'B']"` | `tax_class: "A" \| "B";` | Required union/enum field |
-
-**The optionality trap (`?`)**: In real-world ledgers, not every field is required. A transfer might always need an `invoice_id`, but `notes` is contextual. The `?` suffix on any type string generates an optional TypeScript property (`notes?: string`), making the distinction between "must have" and "nice to have" explicit and compiler-enforced.
 
 ### Schema Sections
 
@@ -77,7 +65,7 @@ export default defineLedger({
 
 ## The `.konto` Proxy (Under the Hood)
 
-When you run `npx @konto/cli generate`, the generator doesn't output a file to your `src/` directory. It writes directly to `node_modules/.konto/`. This is the same pattern used by Prisma Client.
+When you run `npx @konto/cli generate`, the generator doesn't output a file to your `src/` directory. It writes directly to `node_modules/.konto/`. This is the exact same pattern used by Prisma.
 
 ### What Gets Generated
 
@@ -99,51 +87,50 @@ This turns the directory into a valid Node.js package. When TypeScript or Node e
 
 #### `index.d.ts`
 
-The type declaration file. This is where the magic happens. It contains:
-
-1. **Custom interfaces** generated from your config:
+The type declaration file completely bridges your Zod schema into TypeScript inferences via a relative module import back to your root project. It dynamically extracts the types:
 
 ```typescript
-export interface TransferMetadata {
-  invoice_id: string;
-  order_ref: string;
-  notes?: string;
-  tax_class: "GST" | "VAT" | "EXEMPT";
-}
-```
+import type config from "../../konto.config";
+import type { z } from "zod";
 
-2. **Payload overrides** that replace the generic `metadata` field:
-
-```typescript
-export type CustomTransferPayload = Omit<TransferPayload, "metadata"> & {
-  metadata?: TransferMetadata;
-};
-```
-
-3. **Function declarations** with the strict payload types:
-
-```typescript
-export declare function transfer(
-  sql: ReturnType<typeof postgres>,
-  payload: CustomTransferPayload,
-): ReturnType<typeof coreTransfer>;
+type ExtractMetadata<T> = T extends z.ZodType<any, any, any> ? z.infer<T> : Record<string, any>;
+export type TransferMetadata = ExtractMetadata<typeof config.transfer>;
 ```
 
 The developer now gets full autocomplete on `metadata.invoice_id`, compile-time errors on `metadata.invoce_id`, and type errors if they forget `order_ref`.
 
 #### `index.js`
 
-The runtime proxy. Each function simply delegates to the real `@konto/core` method:
+The runtime proxy. It implements a zero-configuration singleton (just like `PrismaClient`) and executes your actual Zod schemas against incoming payloads dynamically:
 
 ```javascript
 import { transfer as coreTransfer } from "@konto/core";
+import { createJiti } from "jiti";
+import postgres from "postgres";
+import path from "path";
 
-export async function transfer(sql, payload) {
-  return coreTransfer(sql, payload);
+const jiti = createJiti(import.meta.url);
+const configPath = path.resolve(process.cwd(), "../../konto.config.ts");
+const configModule = await jiti.import(configPath, { default: true });
+const config = configModule.default || configModule;
+
+let globalAdapter = null;
+function getAdapter() {
+  if (globalAdapter) return globalAdapter;
+  globalAdapter = postgres(process.env.DATABASE_URL);
+  return globalAdapter;
+}
+
+export async function transfer(payload) {
+  const adapter = getAdapter();
+  if (config?.transfer && payload.metadata) {
+    payload.metadata = config.transfer.parse(payload.metadata);
+  }
+  return coreTransfer(adapter, payload);
 }
 ```
 
-There is zero runtime overhead. The `.konto` layer is purely a type-narrowing proxy. At runtime, it's a direct pass-through to the core engine.
+There is massive power in this abstraction. The `.konto` layer evaluates the exact same Zod schema you exported, providing an impenetrable wall of runtime validation before funds ever move. 
 
 ### Why `node_modules/` Instead of `src/`?
 
@@ -157,38 +144,21 @@ Three reasons:
 
 ---
 
-## The Config Loading Mechanism
-
-The generator uses [`jiti`](https://github.com/unjs/jiti) to load `konto.config.ts` at runtime. `jiti` is a lightweight TypeScript/ESM loader that can `import()` a `.ts` file without requiring a build step or `ts-node`.
-
-```typescript
-import { createJiti } from "jiti";
-
-const jiti = createJiti(import.meta.url);
-const configModule = await jiti.import(configPath, { default: true });
-const schema = configModule.default || configModule;
-```
-
-This means the user's config file is a real TypeScript module. They get full IDE support (autocomplete on `defineLedger`, type checking on the schema values) while writing it, and the CLI can load it at runtime without compiling the entire project.
-
----
-
 ## Workflow Summary
 
 ```
-Developer writes konto.config.ts
+Developer writes konto.config.ts (with Zod)
          │
          ▼
    npx @konto/cli generate
          │
-         ├──▶  jiti loads the .ts config at runtime
-         ├──▶  Parser converts string schemas to TS types
-         ├──▶  Generator emits index.d.ts + index.js + package.json
-         └──▶  Output: node_modules/.konto/
+         ├──▶  Writes proxy package to node_modules/.konto/
+         ├──▶  index.d.ts infers Zod types via relative import
+         └──▶  index.js binds runtime Zod .parse() & DB Singleton
                   │
                   ▼
    import { transfer } from '.konto'
          │
          ▼
-   Full autocomplete. Compile-time safety. Zero runtime cost.
+   Full autocomplete. Compile-time safety. Runtime validation. Zero friction.
 ```

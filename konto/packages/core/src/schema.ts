@@ -10,7 +10,8 @@ export const jsonSchema: z.ZodType<Json> = z.lazy(() =>
 );
 
 export const TransferPayloadSchema = z.object({
-  idempotencyKey: z.string().optional(),
+  accountId: z.string().uuid(),
+  idempotencyKey: z.string().max(100).optional(),
   entries: z
     .array(
       z.object({
@@ -26,7 +27,7 @@ export const TransferPayloadSchema = z.object({
 export type TransferPayload = z.infer<typeof TransferPayloadSchema>;
 
 export const HoldPayloadSchema = z.object({
-  idempotencyKey: z.string().optional(),
+  idempotencyKey: z.string().max(100).optional(),
   accountId: z.string().uuid(),
   recipientId: z.string().uuid(),
   amount: z.bigint(),

@@ -48,19 +48,19 @@ export async function transfer(
 
   // 4. Execute atomic transaction
   return db.begin(async (tx) => {
-    // 5. Idempotency check
+    // 5. Idempotency check scoped to account
     if (parsed.idempotencyKey) {
       const existing = await tx<{ id: string }[]>`
         SELECT id FROM konto_journals
-        WHERE idempotency_key = ${parsed.idempotencyKey}
+        WHERE account_id = ${parsed.accountId} AND idempotency_key = ${parsed.idempotencyKey}
         LIMIT 1
       `;
       if (existing.length > 0) throw new KontoDuplicateTransactionError();
     }
 
     // 6. Pessimistic locks (Lexicographically sorted to mathematically prevent deadlocks)
-    const locked = await tx<{ id: string }[]>`
-      SELECT id FROM konto_accounts
+    const locked = await tx<{ id: string, currency: string }[]>`
+      SELECT id, currency FROM konto_accounts
       WHERE id = ANY(${accountIds}::uuid[])
       ORDER BY id
       FOR UPDATE
@@ -70,6 +70,12 @@ export async function transfer(
       const foundIds = new Set(locked.map((r) => r.id));
       const missing = accountIds.filter((id) => !foundIds.has(id));
       throw new Error(`konto: accounts not found: ${missing.join(", ")}`);
+    }
+
+    // Check currency match
+    const currencies = new Set(locked.map((r) => r.currency));
+    if (currencies.size > 1) {
+      throw new Error("konto: cross-currency transfers are not currently supported");
     }
 
     // 7. Derived balances (debit accounts only to save compute)
@@ -139,8 +145,9 @@ export async function transfer(
     const metadataJson = tx.json(parsed.metadata ?? {});
 
     const journalRows = await tx<{ id: string }[]>`
-      INSERT INTO konto_journals (description, metadata, idempotency_key)
+      INSERT INTO konto_journals (account_id, description, metadata, idempotency_key)
       VALUES (
+        ${parsed.accountId},
         ${description},
         ${metadataJson},
         ${parsed.idempotencyKey ?? null}

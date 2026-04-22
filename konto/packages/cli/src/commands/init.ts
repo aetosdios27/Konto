@@ -1,6 +1,9 @@
 import { intro, outro, spinner, text, isCancel, log } from "@clack/prompts";
 import pc from "picocolors";
 import postgres from "postgres";
+import fs from "fs";
+import path from "path";
+import { generateCommand } from "./generate";
 
 export async function initCommand() {
   console.clear();
@@ -36,6 +39,12 @@ export async function initCommand() {
     dbUrl = input as string;
   }
 
+  const configPath = path.resolve(process.cwd(), "konto.config.ts");
+  if (!fs.existsSync(configPath)) {
+    log.info("Scaffolding konto.config.ts...");
+    fs.writeFileSync(configPath, `import { z } from "zod";\nimport { defineLedger } from "@konto/cli";\n\nexport default defineLedger({\n  transfer: z.object({\n    invoice_id: z.string(),\n  }),\n  hold: z.object({}),\n  journal: z.object({}),\n  account: z.object({}),\n});\n`);
+  }
+
   const s = spinner();
   s.start("Applying sequence migrations to Konto Ledger...");
 
@@ -58,7 +67,24 @@ export async function initCommand() {
     }
     
     log.info(pc.cyan("Tip: Add KONTO_INITIALIZED=true to your .env to prevent accidental re-runs in production."));
-    outro("The engine is ready. You can now build with Konto.");
+
+    // Chain the generate command
+    await generateCommand();
+
+    log.success("Setup complete! Here is your quickstart code:");
+    log.message(pc.green(`import { createAccount, transfer } from ".konto";
+
+// Uses process.env.DATABASE_URL automatically
+const alice = await createAccount({ metadata: {} });
+const bob = await createAccount({ metadata: {} });
+
+await transfer({
+  entries: [
+    { accountId: alice.id, amount: -5000n },
+    { accountId: bob.id, amount: 5000n },
+  ],
+  metadata: { invoice_id: "INV-001" },
+});`));
   } catch (err: any) {
     s.stop(pc.red("✖ Injection failed!"));
     console.error(pc.red(err.message ?? err.toString()));

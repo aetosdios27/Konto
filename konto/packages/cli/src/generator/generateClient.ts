@@ -2,50 +2,6 @@ import fs from "fs";
 import path from "path";
 import { LedgerSchema } from "../config";
 
-function parseType(value: string): string {
-  let cleanValue = value;
-  if (value.endsWith("?")) {
-    cleanValue = value.slice(0, -1);
-  }
-
-  if (cleanValue.startsWith("enum:[")) {
-    const arrString = cleanValue.substring(5); // "['A', 'B']"
-    try {
-      const match = arrString.match(/^\[(.*)\]$/);
-      if (match && match[1]) {
-        const items = match[1].split(',').map(s => {
-          const trimmed = s.trim();
-          return trimmed.replace(/^['"](.*)['"]$/, '$1');
-        }).filter(Boolean);
-        
-        if (items.length > 0) {
-          return items.map((item) => `"${item}"`).join(" | ");
-        }
-      }
-    } catch {
-      return "any";
-    }
-  }
-
-  return cleanValue;
-}
-
-function generateInterface(name: string, schema?: Record<string, string>) {
-  if (!schema || Object.keys(schema).length === 0) {
-    return `export type ${name} = Record<string, any>;`;
-  }
-  
-  let result = `export interface ${name} {\n`;
-  for (const [key, value] of Object.entries(schema)) {
-    const isOptional = value.endsWith("?");
-    const propName = isOptional ? `${key}?` : key;
-    const typeName = parseType(value);
-    result += `  ${propName}: ${typeName};\n`;
-  }
-  result += `}`;
-  return result;
-}
-
 export async function generateClient(schema: LedgerSchema) {
   const dtsContent = `
 import {
@@ -55,28 +11,40 @@ import {
   rollbackHold as coreRollbackHold,
   getAccount as coreGetAccount,
   getBalance as coreGetBalance,
-  getJournals as coreGetJournals
+  getJournals as coreGetJournals,
+  createAccount as coreCreateAccount
 } from "@konto/core";
 import type { TransferPayload, HoldPayload } from "@konto/core";
 import type postgres from "postgres";
+import type { z } from "zod";
+import type config from "../../konto.config";
 
-${generateInterface("TransferMetadata", schema.transfer)}
-${generateInterface("HoldMetadata", schema.hold)}
-${generateInterface("JournalMetadata", schema.journal)}
-${generateInterface("AccountMetadata", schema.account)}
+type ExtractMetadata<T> = T extends z.ZodType<any, any, any> ? z.infer<T> : Record<string, any>;
+
+export type TransferMetadata = ExtractMetadata<typeof config.transfer>;
+export type HoldMetadata = ExtractMetadata<typeof config.hold>;
+export type JournalMetadata = ExtractMetadata<typeof config.journal>;
+export type AccountMetadata = ExtractMetadata<typeof config.account>;
 
 export type CustomTransferPayload = Omit<TransferPayload, "metadata"> & { metadata?: TransferMetadata };
 export type CustomHoldPayload = Omit<HoldPayload, "metadata"> & { metadata?: HoldMetadata };
+export type CustomCreateAccountPayload = { id?: string, metadata?: AccountMetadata };
 
-export declare function transfer(sql: ReturnType<typeof postgres>, payload: CustomTransferPayload): ReturnType<typeof coreTransfer>;
+export declare function setKontoAdapter(executor: any): void;
 
-export declare function hold(sql: ReturnType<typeof postgres>, payload: CustomHoldPayload): ReturnType<typeof coreHold>;
+export declare function createAccount(payload?: CustomCreateAccountPayload): ReturnType<typeof coreCreateAccount>;
 
-export declare function commitHold(sql: ReturnType<typeof postgres>, holdId: string, metadata?: JournalMetadata): ReturnType<typeof coreCommitHold>;
+export declare function transfer(payload: CustomTransferPayload): ReturnType<typeof coreTransfer>;
 
-export declare function rollbackHold(sql: ReturnType<typeof postgres>, holdId: string, metadata?: JournalMetadata): ReturnType<typeof coreRollbackHold>;
+export declare function hold(payload: CustomHoldPayload): ReturnType<typeof coreHold>;
 
-export { coreGetAccount as getAccount, coreGetBalance as getBalance, coreGetJournals as getJournals };
+export declare function commitHold(holdId: string, metadata?: JournalMetadata): ReturnType<typeof coreCommitHold>;
+
+export declare function rollbackHold(holdId: string, metadata?: JournalMetadata): ReturnType<typeof coreRollbackHold>;
+
+export declare function getAccount(accountId: string): ReturnType<typeof coreGetAccount>;
+export declare function getBalance(accountId: string): ReturnType<typeof coreGetBalance>;
+export declare function getJournals(accountId: string, opts?: any): ReturnType<typeof coreGetJournals>;
 `;
 
   const jsContent = `
@@ -87,26 +55,89 @@ import {
   rollbackHold as coreRollbackHold, 
   getAccount as coreGetAccount, 
   getBalance as coreGetBalance, 
-  getJournals as coreGetJournals 
+  getJournals as coreGetJournals,
+  createAccount as coreCreateAccount
 } from "@konto/core";
+import { createJiti } from "jiti";
+import path from "path";
+import postgres from "postgres";
+import { fileURLToPath } from "url";
 
-export async function transfer(sql, payload) {
-  return coreTransfer(sql, payload);
+const jiti = createJiti(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const configPath = path.resolve(__dirname, "../../konto.config.ts");
+
+const configModule = await jiti.import(configPath, { default: true });
+const config = configModule.default || configModule;
+
+// Internal singleton connection
+let globalAdapter = null;
+function getAdapter() {
+  if (globalAdapter) return globalAdapter;
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is not set. Please set it or call setKontoAdapter().");
+  }
+  globalAdapter = postgres(process.env.DATABASE_URL);
+  return globalAdapter;
 }
 
-export async function hold(sql, payload) {
-  return coreHold(sql, payload);
+export function setKontoAdapter(adapter) {
+  globalAdapter = adapter;
 }
 
-export async function commitHold(sql, holdId, metadata) {
-  return coreCommitHold(sql, holdId, metadata);
+export async function createAccount(payload = {}) {
+  const adapter = getAdapter();
+  if (config?.account && payload.metadata) {
+    payload.metadata = config.account.parse(payload.metadata);
+  }
+  return coreCreateAccount(adapter, payload);
 }
 
-export async function rollbackHold(sql, holdId, metadata) {
-  return coreRollbackHold(sql, holdId, metadata);
+export async function transfer(payload) {
+  const adapter = getAdapter();
+  if (config?.transfer && payload.metadata) {
+    payload.metadata = config.transfer.parse(payload.metadata);
+  }
+  return coreTransfer(adapter, payload);
 }
 
-export { coreGetAccount as getAccount, coreGetBalance as getBalance, coreGetJournals as getJournals };
+export async function hold(payload) {
+  const adapter = getAdapter();
+  if (config?.hold && payload.metadata) {
+    payload.metadata = config.hold.parse(payload.metadata);
+  }
+  return coreHold(adapter, payload);
+}
+
+export async function commitHold(holdId, metadata) {
+  const adapter = getAdapter();
+  let finalMetadata = metadata;
+  if (config?.journal && metadata) {
+    finalMetadata = config.journal.parse(metadata);
+  }
+  return coreCommitHold(adapter, holdId, finalMetadata);
+}
+
+export async function rollbackHold(holdId, metadata) {
+  const adapter = getAdapter();
+  let finalMetadata = metadata;
+  if (config?.journal && metadata) {
+    finalMetadata = config.journal.parse(metadata);
+  }
+  return coreRollbackHold(adapter, holdId, finalMetadata);
+}
+
+export async function getAccount(accountId) {
+  return coreGetAccount(getAdapter(), accountId);
+}
+
+export async function getBalance(accountId) {
+  return coreGetBalance(getAdapter(), accountId);
+}
+
+export async function getJournals(accountId, opts) {
+  return coreGetJournals(getAdapter(), accountId, opts);
+}
 `;
 
   const packageJsonContent = JSON.stringify({
@@ -114,7 +145,11 @@ export { coreGetAccount as getAccount, coreGetBalance as getBalance, coreGetJour
     version: "1.0.0",
     main: "index.js",
     types: "index.d.ts",
-    type: "module"
+    type: "module",
+    dependencies: {
+      "jiti": "^2.6.1",
+      "postgres": "^3.4.5"
+    }
   }, null, 2);
 
   const nodeModulesPath = path.resolve(process.cwd(), "node_modules");

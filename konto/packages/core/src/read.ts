@@ -104,7 +104,7 @@ export async function getJournals(
   accountId: string,
   options: GetJournalsOptions = {},
 ): Promise<JournalWithEntries[]> {
-  const limit = options.limit ?? 50;
+  const limit = Math.min(Math.max(1, options.limit ?? 50), 500);
 
   // Utilize json_agg recursively to avoid N+1, explicitly decay BigInt payload elements to TEXT inside the aggregation logic to dodge precision decay flaws.
   // Use lateral joins logically isolated to the journal batch being addressed.

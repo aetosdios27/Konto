@@ -35,15 +35,17 @@ The atomic event wrapper. A journal represents a single business event ("Invoice
 ```sql
 CREATE TABLE konto_journals (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id        UUID NOT NULL REFERENCES konto_accounts(id) ON DELETE RESTRICT,
   description       TEXT,
   metadata          JSONB,
-  idempotency_key   TEXT UNIQUE,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  idempotency_key   TEXT,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(account_id, idempotency_key)
 );
 ```
 
 **Design decisions:**
-- **Idempotency key** — A `UNIQUE` constraint on `idempotency_key` prevents double-processing. If a network retry sends the same payment request twice, the second attempt throws `KontoDuplicateTransactionError` instead of creating duplicate entries.
+- **Idempotency key scoping** — A `UNIQUE(account_id, idempotency_key)` constraint prevents double-processing while protecting against global DoS squatting. If a network retry sends the same payment request twice, the second attempt throws `KontoDuplicateTransactionError`.
 - **Metadata is JSONB** — Structured, queryable, and schema-free. The typed client generator (Phase 4) overlays strict TypeScript interfaces on top of this field.
 
 ### `konto_entries`
@@ -53,7 +55,7 @@ The only source of truth. This is an append-only, immutable log of every financi
 ```sql
 CREATE TABLE konto_entries (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  journal_id  UUID NOT NULL REFERENCES konto_journals(id) ON DELETE CASCADE,
+  journal_id  UUID NOT NULL REFERENCES konto_journals(id) ON DELETE RESTRICT,
   account_id  UUID NOT NULL REFERENCES konto_accounts(id) ON DELETE RESTRICT,
   amount      BIGINT NOT NULL CHECK (amount != 0),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -61,9 +63,10 @@ CREATE TABLE konto_entries (
 ```
 
 **Design decisions:**
+- **Zero-Sum Constraint Trigger** — A `DEFERRED` Postgres constraint trigger mathematically verifies `SUM(amount) = 0` per journal before the transaction commits. Out-of-balance entries are physically impossible to persist.
 - **`BIGINT`, not `NUMERIC` or `FLOAT`** — JavaScript's `number` type is IEEE 754 double-precision. Values above `2^53` silently lose precision. By using `BIGINT` in Postgres and `bigint` in TypeScript, we guarantee exact integer arithmetic for all monetary values. Store cents/paise, not dollars/rupees.
-- **`CHECK (amount != 0)`** — A zero-amount entry is meaningless in double-entry accounting. Rejecting it at the DB level prevents application bugs from polluting the ledger.
-- **`ON DELETE CASCADE` from journals** — If a journal is deleted (which should never happen in production), its entries go with it. Orphaned entries would corrupt balance derivations.
+- **`CHECK (amount != 0)`** — A zero-amount entry is meaningless in double-entry accounting.
+- **`ON DELETE RESTRICT` from journals** — Entries are immutable. A journal and its entries are permanently bound to preserve the absolute audit trail.
 - **`ON DELETE RESTRICT` to accounts** — An account with entries cannot be deleted. Period.
 
 ### `konto_holds`
@@ -76,15 +79,18 @@ CREATE TABLE konto_holds (
   account_id      UUID NOT NULL REFERENCES konto_accounts(id) ON DELETE RESTRICT,
   recipient_id    UUID NOT NULL REFERENCES konto_accounts(id) ON DELETE RESTRICT,
   amount          BIGINT NOT NULL CHECK (amount > 0),
-  idempotency_key TEXT UNIQUE,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  idempotency_key TEXT,
+  status          TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'COMMITTED', 'ROLLED_BACK')),
+  expires_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(account_id, idempotency_key)
 );
 ```
 
 **Design decisions:**
-- **`CHECK (amount > 0)`** — A hold is always a positive earmark. Negative holds are nonsensical.
-- **Ephemeral by design** — Unlike entries, holds are deleted when committed or rolled back. They exist solely to reduce available balance during the escrow window.
-- **Mechanical, not semantic** — Holds carry no metadata. Context for why a hold exists belongs in the application database or in the journal created when the hold is committed. The ledger only cares about the lock on the value.
+- **`CHECK (amount > 0)`** — A hold is always a positive earmark. JS validations strictly prevent 0 or negative inputs, mitigating infinite-money exploits.
+- **Stateful but Immutable** — Unlike early designs, holds are *never deleted*. Their state transitions to `COMMITTED` or `ROLLED_BACK` to preserve a pristine audit trail.
+- **Mechanical, not semantic** — Holds carry no metadata natively. Context for why a hold exists belongs in the journal created when the hold is committed.
 
 ---
 
@@ -246,9 +252,9 @@ Holds implement a two-phase commit pattern for scenarios where funds must be res
 
 ```
 hold()  ──────┬──────▶  commitHold()  ──▶  Permanent journal entry created.
-              │                              Hold row deleted.
+              │                              Hold status: 'COMMITTED'
               │
-              └──────▶  rollbackHold() ──▶  Hold row deleted. 
+              └──────▶  rollbackHold() ──▶  Hold status: 'ROLLED_BACK'
                                              Funds released. No journal.
 ```
 
