@@ -28,6 +28,8 @@ The root cause: **the type system and runtime validation had no opinion about wh
 
 Konto solves this by letting you define your metadata schema once using **Zod**, then generating a typed client that enforces it at compile time *and* validates it at runtime.
 
+Because `konto.config.ts` is real executable project code, the consuming app must have both `@konto/cli` and `zod` installed. The generator loads that file directly via `jiti`; it is not parsing a static JSON manifest.
+
 `defineLedger()` is intentionally typed as a generic identity helper: it returns the exact Zod object map you pass in, rather than widening it to a loose interface. That detail is what allows the generated `.d.ts` file to preserve your literal schema shapes and expose precise metadata inference back to application code.
 
 ### The `defineLedger` API
@@ -47,6 +49,9 @@ export default defineLedger({
   }),
   hold: z.object({
     reason: z.string(),
+  }),
+  journal: z.object({
+    source: z.enum(['HOLD_COMMIT', 'MANUAL_ADJUSTMENT']),
   }),
   account: z.object({
     status: z.enum(['ACTIVE', 'FROZEN', 'CLOSED']),
@@ -86,6 +91,14 @@ The generator creates three files inside `node_modules/.konto/`:
 ```
 
 This turns the directory into a valid Node.js package. When TypeScript or Node encounters `import { transfer } from '.konto'`, it resolves to `node_modules/.konto/index.js` (runtime) and `node_modules/.konto/index.d.ts` (types) — no `tsconfig.json` path aliases required.
+
+The developer-facing config import also comes from the package entrypoint:
+
+```typescript
+import { defineLedger } from "@konto/cli";
+```
+
+That means `@konto/cli` must act as both a CLI binary and a normal ESM import surface. The config contract is only truly valid when both of those entrypoints work.
 
 #### `index.d.ts`
 

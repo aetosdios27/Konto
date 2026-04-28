@@ -163,7 +163,10 @@ export async function getJournals(accountId, opts) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
 
-  fs.writeFileSync(path.join(targetDir, "index.d.ts"), dtsContent.trim() + "\\n");
-  fs.writeFileSync(path.join(targetDir, "index.js"), jsContent.trim() + "\\n");
-  fs.writeFileSync(path.join(targetDir, "package.json"), packageJsonContent + "\\n");
+  const normalizedDtsContent = dtsContent.trim().replace(/\\n$/, "") + "\n";
+  const normalizedJsContent = jsContent.trim().replace(/\\n$/, "") + "\n";
+
+  fs.writeFileSync(path.join(targetDir, "index.d.ts"), normalizedDtsContent);
+  fs.writeFileSync(path.join(targetDir, "index.js"), normalizedJsContent);
+  fs.writeFileSync(path.join(targetDir, "package.json"), packageJsonContent + "\n");
 }

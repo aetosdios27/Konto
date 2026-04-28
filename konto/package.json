@@ -18,7 +18,9 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@konto/cli": "workspace:^",
     "@konto/core": "workspace:^",
-    "postgres": "^3.4.5"
+    "postgres": "^3.4.5",
+    "zod": "^3.25.76"
   }
 }

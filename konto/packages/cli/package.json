@@ -2,6 +2,14 @@
   "name": "@konto/cli",
   "version": "0.1.0",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "bin": {
     "konto": "./dist/index.js"
   },

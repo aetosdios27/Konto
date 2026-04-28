@@ -25,7 +25,7 @@ This is not a theoretical problem. It is the #1 cause of financial discrepancies
 **Konto** is a zero-dependency, ACID-compliant, double-entry accounting engine that lives inside your PostgreSQL database. It replaces ad-hoc balance columns with an immutable, append-only ledger where every cent is accounted for, every movement is atomic, and every balance is derived — never stored.
 
 ```
-npm install @konto/core @konto/cli
+npm install @konto/core @konto/cli zod
 ```
 
 ---
@@ -74,6 +74,12 @@ export default defineLedger({
     notes: z.string().optional(),
     tax_class: z.enum(["GST", "VAT", "EXEMPT"]),
   }),
+  hold: z.object({
+    reason: z.enum(["AUTH_ONLY", "ESCROW"]),
+  }),
+  journal: z.object({
+    source: z.enum(["HOLD_COMMIT", "MANUAL_ADJUSTMENT"]),
+  }),
 });
 ```
 
@@ -84,6 +90,7 @@ npx @konto/cli generate
 ```
 
 This outputs a strictly-typed SDK to `node_modules/.konto` — instantly available across your entire project.
+Your application must depend on both `@konto/cli` and `zod`, because `konto.config.ts` imports them directly and the generator loads that file at runtime.
 
 ### Step 4: Move Money
 
@@ -110,17 +117,19 @@ That's it. Five lines to replace `UPDATE ... SET balance = balance + n` with a p
 
 ---
 
-## Core API
+## Generated Client API
+
+The signatures below describe the generated `.konto` proxy. If you import directly from `@konto/core`, the raw functions still take an explicit database executor as their first argument.
 
 | Function | Description |
 | --- | --- |
-| `transfer(sql, payload)` | Atomic multi-leg journal entry with zero-sum enforcement |
-| `hold(sql, payload)` | Earmark funds without moving them (escrow phase 1) |
-| `commitHold(sql, holdId)` | Settle a hold into the permanent ledger |
-| `rollbackHold(sql, holdId)` | Release a hold, restoring available balance |
-| `getAccount(sql, accountId)` | Fetch account metadata |
-| `getBalance(sql, accountId)` | Derived liquid balance via snapshots: `Snapshot + Σ entries − Σ pending active holds` |
-| `getJournals(sql, accountId, opts)` | Paginated, hydrated transaction history |
+| `transfer(payload)` | Atomic multi-leg journal entry with zero-sum enforcement and Zod-validated transfer metadata |
+| `hold(payload)` | Earmark funds without moving them (escrow phase 1) with Zod-validated hold metadata |
+| `commitHold(holdId, metadata?)` | Settle a hold into the permanent ledger with optional `journal` metadata validation |
+| `rollbackHold(holdId, metadata?)` | Release a hold and optionally validate `journal` metadata before resolving the hold |
+| `getAccount(accountId)` | Fetch account metadata |
+| `getBalance(accountId)` | Derived liquid balance via snapshots: `Snapshot + Σ entries − Σ pending active holds` |
+| `getJournals(accountId, opts)` | Paginated, hydrated transaction history |
 
 ---
 
