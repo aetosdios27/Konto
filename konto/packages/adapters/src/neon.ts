@@ -1,15 +1,14 @@
-import { neon } from "@neondatabase/serverless";
 import type { KontoQueryExecutor } from "../../types/src/driver";
 
-/** Converts standard Tagged Templates to parameterized $1, $2 SQL */
-function buildQuery(strings: TemplateStringsArray, values: any[]): { text: string; params: any[] } {
+export function buildQuery(strings: TemplateStringsArray, values: any[]): { text: string; params: any[] } {
   let text = "";
   const params: any[] = [];
   
   for (let i = 0; i < strings.length; i++) {
     text += strings[i];
     if (i < values.length) {
-      params.push(values[i]);
+      const val = values[i];
+      params.push(typeof val === "bigint" ? val.toString() : val);
       text += `$${params.length}`;
     }
   }
@@ -17,9 +16,7 @@ function buildQuery(strings: TemplateStringsArray, values: any[]): { text: strin
   return { text, params };
 }
 
-export function createNeonAdapter(connectionString: string): KontoQueryExecutor {
-  const sql = neon(connectionString);
-
+export function createKontoClient(sql: any): KontoQueryExecutor {
   const wrapClient = (client: any): KontoQueryExecutor => {
     const executor: any = async (strings: TemplateStringsArray, ...values: any[]) => {
       const { text, params } = buildQuery(strings, values);

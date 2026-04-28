@@ -160,6 +160,27 @@ const { balance } = await getBalance(accountId);
 
 The proxy owns adapter lookup internally, either through `setKontoAdapter()` or a lazy `DATABASE_URL`-backed singleton.
 
+### Adapter Integration
+
+The generated `.konto` proxy defaults to a `postgres.js` singleton, but the underlying `KontoQueryExecutor` interface can be satisfied by any first-party adapter:
+
+| Adapter | Package | Status |
+| --- | --- | --- |
+| `postgres.js` (direct) | — | **Production** |
+| Vercel Postgres | `@konto/adapters/vercel` | **Production** |
+| Neon Serverless | `@konto/adapters/neon` | **Production** |
+| Supabase | `@konto/adapters/supabase` | **Experimental** — throws at runtime |
+
+To use the Neon adapter with the generated client:
+
+```typescript
+import { createKontoClient } from '@konto/adapters/neon';
+import { neon } from '@neondatabase/serverless';
+import { setKontoAdapter } from '.konto';
+
+setKontoAdapter(createKontoClient(neon(process.env.DATABASE_URL)));
+```
+
 ### Why `node_modules/` Instead of `src/`?
 
 Three reasons:

@@ -133,10 +133,46 @@ The signatures below describe the generated `.konto` proxy. If you import direct
 
 ---
 
+## Adapters
+
+Konto decouples the ledger engine from any specific PostgreSQL driver via the `KontoQueryExecutor` interface. First-party adapters are provided for the most common serverless Postgres providers.
+
+### Vercel Postgres
+
+```bash
+npm install @konto/adapters @vercel/postgres
+```
+
+```typescript
+import { createVercelAdapter } from '@konto/adapters/vercel';
+
+const konto = createVercelAdapter(process.env.POSTGRES_URL);
+```
+
+### Neon Serverless
+
+```bash
+npm install @konto/adapters @neondatabase/serverless
+```
+
+```typescript
+import { createKontoClient } from '@konto/adapters/neon';
+import { neon } from '@neondatabase/serverless';
+
+const konto = createKontoClient(neon(process.env.DATABASE_URL));
+```
+
+### Supabase ⚠️
+
+> **Experimental.** The Supabase adapter is not production-ready in this release. It will throw at runtime. Use the Neon or Vercel adapters instead, or connect directly via `postgres.js` with your Supabase connection string.
+
+---
+
 ## Architecture
 
 - **[Architecture & Physics](./docs/architecture.md)** — Schema design, concurrency model, escrow lifecycle, and the V8 float decay patch.
 - **[Client Generation](./docs/client-generation.md)** — How `defineLedger` and the `.konto` proxy trick work under the hood.
+- **[Adapters](./docs/adapters.md)** — How the KontoQueryExecutor interface works, per-adapter usage, edge case handling, and peer dependency configuration.
 - **[Codebase Explanation](./docs/codebase_explanation.md)** — Full module-by-module status and implementation notes.
 
 ---
@@ -163,7 +199,7 @@ konto/
 │   ├── core/        # The engine. transfer, hold, read, schema, errors.
 │   ├── cli/         # Deterministic migration runner + client generator.
 │   ├── types/       # Generic Database Driver abstractions.
-│   └── adapters/    # First-party adapters (Vercel Edge, etc.)
+│   └── adapters/    # First-party adapters (Vercel, Neon, Supabase).
 ├── apps/
 │   └── studio/      # (Planned) Visual ledger dashboard.
 ├── docs/            # Architecture, client generation, codebase docs.

@@ -1,15 +1,15 @@
 import { createClient } from "@vercel/postgres";
 import type { KontoQueryExecutor } from "../../types/src/driver";
 
-/** Converts standard Tagged Templates to parameterized $1, $2 SQL */
-function buildQuery(strings: TemplateStringsArray, values: any[]): { text: string; params: any[] } {
+export function buildQuery(strings: TemplateStringsArray, values: any[]): { text: string; params: any[] } {
   let text = "";
   const params: any[] = [];
   
   for (let i = 0; i < strings.length; i++) {
     text += strings[i];
     if (i < values.length) {
-      params.push(values[i]);
+      const val = values[i];
+      params.push(typeof val === "bigint" ? val.toString() : val);
       text += `$${params.length}`;
     }
   }

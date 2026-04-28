@@ -30,13 +30,26 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./vercel": {
+      "types": "./dist/vercel.d.ts",
+      "default": "./dist/vercel.js"
+    },
+    "./neon": {
+      "types": "./dist/neon.d.ts",
+      "default": "./dist/neon.js"
+    },
+    "./supabase": {
+      "types": "./dist/supabase.d.ts",
+      "default": "./dist/supabase.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --dts --format esm --clean",
+    "build": "tsup src/index.ts src/vercel.ts src/neon.ts src/supabase.ts --dts --format esm --clean",
+    "test": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -61,6 +74,7 @@
   "devDependencies": {
     "@types/node": "^22",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^2.1.9"
   }
 }
