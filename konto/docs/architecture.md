@@ -130,10 +130,14 @@ LEFT JOIN LATERAL (
 LEFT JOIN LATERAL (
   SELECT SUM(amount) as total
   FROM konto_holds
-  WHERE account_id = a.id AND (expires_at IS NULL OR NOW() <= expires_at)
+  WHERE account_id = a.id
+    AND status = 'PENDING'
+    AND (expires_at IS NULL OR NOW() <= expires_at)
 ) h ON true
 WHERE a.id = $1
 ```
+
+Only `PENDING` holds participate in available-balance derivation. Historical `COMMITTED` and `ROLLED_BACK` rows remain in `konto_holds` for auditability but must never continue depressing spendable balance.
 
 ### The V8 Float Decay Patch
 
@@ -272,18 +276,18 @@ hold()  ──────┬──────▶  commitHold()  ──▶  Per
 
 1. Lock the hold row with `FOR UPDATE` (prevents concurrent commit/rollback).
 2. Lock the sender and recipient accounts (lexicographical order).
-3. **Delete** the hold row.
+3. Mark the hold row as `COMMITTED`.
 4. Create a permanent journal with two entry legs: debit sender, credit recipient.
 
-The hold is atomically converted into an immutable ledger entry within a single transaction.
+The hold is atomically converted into an immutable ledger entry within a single transaction. Its row remains for auditability, but because balance derivation only counts `PENDING` holds, the settled row no longer reduces available funds.
 
 ### Phase 2b: `rollbackHold()`
 
 1. Lock the hold row with `FOR UPDATE`.
 2. Lock the sender account.
-3. **Delete** the hold row.
+3. Mark the hold row as `ROLLED_BACK`.
 
-No journal is created. The earmarked funds are silently released back to the sender's available balance.
+No journal is created. The earmarked funds are silently released back to the sender's available balance, and the historical hold row remains as terminal audit state.
 
 ### Conservation of Value
 

@@ -30,7 +30,7 @@ The PostgreSQL schema reflects a classic immutable double-entry architecture hea
 - **`konto_journals`**: The atomic grouping for a single transaction action. Enforces **idempotency** constraints (`UNIQUE(account_id, idempotency_key)`) so identical requests from external systems aren't double-processed, while preventing cross-tenant squatting.
 - **`konto_entries`**: The immutable, append-only source of truth connecting journals to accounts. 
   - **Financial Safety**: A strict check constraint (`amount != 0`) avoids meaningless entries. A `DEFERRED` PostgreSQL constraint trigger rigorously forces `SUM(amount) = 0` per journal, making out-of-balance entries physically impossible to commit.
-- **`konto_holds`**: An ephemeral table managing the two-phase commit (Escrow) system. Tracks uncommitted, earmarked funds that reduce the available balance. Built with strict `expires_at` TTL checks (capped at 30 days maximum) and is strictly state-based (`PENDING`, `COMMITTED`, `ROLLED_BACK`) to ensure pristine, undeleted audit trails.
+- **`konto_holds`**: An ephemeral table managing the two-phase commit (Escrow) system. Tracks earmarked funds, but only `PENDING` rows reduce available balance. Built with strict `expires_at` TTL checks (capped at 30 days maximum) and is strictly state-based (`PENDING`, `COMMITTED`, `ROLLED_BACK`) to ensure pristine, undeleted audit trails.
 - **`konto_balance_snapshots`**: Foundation for mathematically sound O(1) balance read scaling. Checkpoints balances securely to drastically truncate the derivation scan ranges. Arbitrary INSERTs are revoked in favor of a secure `take_snapshot(account_id)` stored procedure.
 
 ### 2. Transaction Engines (`transfer.ts` & `hold.ts`)
@@ -38,14 +38,14 @@ The `transfer` and `hold` functions manage the complexity of logging financial m
 - **Zod Validation**: Validates payloads on input. Crucially, uses **`bigint`** (not `number`) to eliminate any chance of IEEE 754 floating-point errors.
 - **Zero-sum Constraints**: Mathematically enforces that `Sum(Debits) + Sum(Credits) = 0` prior to any database calls, and re-validates under strict locks.
 - **Deadlock Prevention**: Deterministically sorts account IDs lexicographically and requests `FOR UPDATE` pessimistic locks in that specific order, preventing standard DB deadlocks across simultaneous complex transfers and holds.
-- **On-the-fly Balance Calculation**: It avoids storing stale or out-of-sync balances. The system dynamically aggregates `SUM(amount)` across `konto_entries` and explicitly subtracts active holds (`konto_holds`) via a zero-copy indexed `LEFT JOIN` algorithm to safely prevent double-spends (`KontoInsufficientFundsError`).
+- **On-the-fly Balance Calculation**: It avoids storing stale or out-of-sync balances. The system dynamically aggregates `SUM(amount)` across `konto_entries` and explicitly subtracts only active pending holds (`konto_holds` rows with `status = 'PENDING'` that are not expired) via a zero-copy indexed `LEFT JOIN` algorithm to safely prevent double-spends (`KontoInsufficientFundsError`).
 - **High-performance Bulk Inserts**: Uses PostgreSQL's `UNNEST` capabilities to batch insert all legs of the journal entries simultaneously in a single atomic payload.
 - **Hold Mechanics**: Implements a strict two-phase commit escrow. You can initialize a `hold()`, and eventually resolve it permanently via `commitHold()` or abort via `rollbackHold()`. Under locks, the engine recursively validates expiration limits and dynamically derives balances to eradicate double-spend exploits.
 
 ### 3. Read API (`read.ts`)
 The ledger avoids N+1 queries by offloading logic natively to PostgreSQL and aggressively mitigating Node.js floating-point decay lines across BigInt data limits.
 - **`getAccount`**: High-performance isolated point lookups for account metadata.
-- **`getBalance`**: Executes mathematical limits summing `konto_entries` natively and deducting explicitly queried locks over `konto_holds` (respecting `expires_at` logic natively). Emits zero-copy available balances deterministically. It avoids the O(N) performance death spiral by referencing **`konto_balance_snapshots`** via optimized `LATERAL` joins.
+- **`getBalance`**: Executes mathematical limits summing `konto_entries` natively and deducting only `PENDING` `konto_holds` rows that are still active under `expires_at`. Emits zero-copy available balances deterministically. It avoids the O(N) performance death spiral by referencing **`konto_balance_snapshots`** via optimized `LATERAL` joins.
 - **`getJournals`**: Fetches deeply nested journal layouts, utilizing explicit `LATERAL` joins combined with sub-aggregated `json_agg` boundaries (hard-capped at 500 limits to prevent memory exhaustion). Includes flawless deterministic keyset pagination scaling efficiently across infinite historical subsets based on strictly sortable UUID timelines.
 
 ### 4. Custom Errors (`errors.ts`)

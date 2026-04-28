@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS konto_holds (
 
 -- Optimize hold querying for the balance calculation invariant
 CREATE INDEX IF NOT EXISTS idx_holds_account ON konto_holds(account_id);
+CREATE INDEX IF NOT EXISTS idx_holds_active
+  ON konto_holds(account_id, expires_at)
+  WHERE status = 'PENDING';
 
 -- 5. Derivation Checkpoints (Performance scaling)
 CREATE TABLE IF NOT EXISTS konto_balance_snapshots (

@@ -10,6 +10,7 @@ import * as path from "path";
 import { transfer } from "../src/transfer";
 import { hold, commitHold, rollbackHold } from "../src/hold";
 import { KontoInsufficientFundsError } from "../src/errors";
+import { getBalance } from "../src/read";
 
 describe("Konto Escrow Engine - Pathological Benchmark", () => {
   let container: StartedPostgreSqlContainer;
@@ -30,6 +31,32 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
     if (sql) await sql.end();
     if (container) await container.stop();
   });
+
+  async function createFundedAccounts(startingBalance: bigint = 1000n) {
+    const alice = uuidv4();
+    const bob = uuidv4();
+    const bank = uuidv4();
+
+    await sql`
+      INSERT INTO konto_accounts (id, name, currency)
+      VALUES
+        (${alice}, 'Alice', 'INR'),
+        (${bob}, 'Bob', 'INR'),
+        (${bank}, 'Bank', 'INR')
+    `;
+
+    const [journal] =
+      await sql`INSERT INTO konto_journals (description) VALUES ('genesis') RETURNING id`;
+
+    await sql`
+      INSERT INTO konto_entries (journal_id, account_id, amount)
+      VALUES
+        (${journal.id}, ${alice}, ${startingBalance.toString()}),
+        (${journal.id}, ${bank}, ${(-startingBalance).toString()})
+    `;
+
+    return { alice, bob, bank };
+  }
 
   it("should survive 1000+ concurrent transfers and holds without deadlocks and maintain conservation of value", async () => {
     const NUM_ACCOUNTS = 50;
@@ -131,7 +158,99 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
     const [{ count }] = await sql<{ count: string }[]>`
         SELECT COUNT(*)::text as count FROM konto_holds
     `;
-    expect(count).toBe("0");
+    expect(Number(count)).toBe(holdIdsToResolve.length);
 
   }, 120000); // 120s timeout
+
+  it("committed hold no longer reduces available balance after settlement", async () => {
+    const { alice, bob } = await createFundedAccounts(1000n);
+
+    const { holdId } = await hold(sql, {
+      accountId: alice,
+      recipientId: bob,
+      amount: 300n,
+    });
+
+    const pendingBalance = await getBalance(sql, alice);
+    expect(pendingBalance.balance).toBe(700n);
+
+    await commitHold(sql, holdId);
+
+    const settledAlice = await getBalance(sql, alice);
+    const settledBob = await getBalance(sql, bob);
+
+    expect(settledAlice.balance).toBe(700n);
+    expect(settledBob.balance).toBe(300n);
+  });
+
+  it("rolled-back hold no longer reduces available balance after release", async () => {
+    const { alice, bob } = await createFundedAccounts(1000n);
+
+    const { holdId } = await hold(sql, {
+      accountId: alice,
+      recipientId: bob,
+      amount: 250n,
+    });
+
+    const pendingBalance = await getBalance(sql, alice);
+    expect(pendingBalance.balance).toBe(750n);
+
+    await rollbackHold(sql, holdId);
+
+    const restoredAlice = await getBalance(sql, alice);
+    const restoredBob = await getBalance(sql, bob);
+
+    expect(restoredAlice.balance).toBe(1000n);
+    expect(restoredBob.balance).toBe(0n);
+  });
+
+  it("NULL-expiry committed hold does not freeze funds indefinitely", async () => {
+    const { alice, bob } = await createFundedAccounts(1000n);
+
+    const { holdId } = await hold(sql, {
+      accountId: alice,
+      recipientId: bob,
+      amount: 400n,
+    });
+
+    const [{ expiresAt }] = await sql<{ expiresAt: Date | null }[]>`
+      SELECT expires_at AS "expiresAt"
+      FROM konto_holds
+      WHERE id = ${holdId}
+    `;
+    expect(expiresAt).toBeNull();
+
+    await commitHold(sql, holdId);
+
+    const settledAlice = await getBalance(sql, alice);
+    const settledBob = await getBalance(sql, bob);
+
+    expect(settledAlice.balance).toBe(600n);
+    expect(settledBob.balance).toBe(400n);
+  });
+
+  it("NULL-expiry rolled-back hold does not freeze funds indefinitely", async () => {
+    const { alice, bob } = await createFundedAccounts(1000n);
+
+    const { holdId } = await hold(sql, {
+      accountId: alice,
+      recipientId: bob,
+      amount: 400n,
+    });
+
+    const [{ expiresAt }] = await sql<{ expiresAt: Date | null }[]>`
+      SELECT expires_at AS "expiresAt"
+      FROM konto_holds
+      WHERE id = ${holdId}
+    `;
+    expect(expiresAt).toBeNull();
+
+    await rollbackHold(sql, holdId);
+
+    const restoredAlice = await getBalance(sql, alice);
+    const restoredBob = await getBalance(sql, bob);
+
+    expect(restoredAlice.balance).toBe(1000n);
+    expect(restoredBob.balance).toBe(0n);
+  });
 });

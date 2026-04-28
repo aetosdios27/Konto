@@ -109,6 +109,7 @@ export async function transfer(
           SELECT SUM(amount) as hold_sum
           FROM konto_holds
           WHERE account_id = ids.id
+            AND status = 'PENDING'
             AND (expires_at IS NULL OR NOW() <= expires_at)
         ) h ON true
       `;

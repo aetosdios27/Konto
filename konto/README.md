@@ -121,7 +121,7 @@ That's it. Five lines to replace `UPDATE ... SET balance = balance + n` with a p
 | `commitHold(sql, holdId)` | Settle a hold into the permanent ledger |
 | `rollbackHold(sql, holdId)` | Release a hold, restoring available balance |
 | `getAccount(sql, accountId)` | Fetch account metadata |
-| `getBalance(sql, accountId)` | Derived liquid balance via snapshots: `Snapshot + Σ entries − Σ holds` |
+| `getBalance(sql, accountId)` | Derived liquid balance via snapshots: `Snapshot + Σ entries − Σ pending active holds` |
 | `getJournals(sql, accountId, opts)` | Paginated, hydrated transaction history |
 
 ---

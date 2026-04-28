@@ -52,7 +52,9 @@ export async function getBalance(
     LEFT JOIN LATERAL (
       SELECT SUM(amount) as total
       FROM konto_holds
-      WHERE account_id = a.id AND (expires_at IS NULL OR NOW() <= expires_at)
+      WHERE account_id = a.id
+        AND status = 'PENDING'
+        AND (expires_at IS NULL OR NOW() <= expires_at)
     ) h ON true
     WHERE a.id = ${accountId}
   `;
