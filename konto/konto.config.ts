@@ -1,6 +1,12 @@
-import { defineLedger } from "./packages/cli/src/config";
+import { z } from "zod";
+import { defineLedger } from "@konto/cli";
 
 export default defineLedger({
-  transfer: { invoice_id: "string", notes: "string?" },
-  account: { status: "enum:['ACTIVE', 'FROZEN']" }
+  transfer: z.object({
+    invoice_id: z.string(),
+    notes: z.string().optional(),
+  }),
+  account: z.object({
+    status: z.enum(["ACTIVE", "FROZEN"]),
+  }),
 });

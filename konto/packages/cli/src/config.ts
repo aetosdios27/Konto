@@ -1,12 +1,12 @@
 import type { z } from "zod";
 
 export interface LedgerSchema {
-  transfer?: z.ZodObject<any>;
-  hold?: z.ZodObject<any>;
-  journal?: z.ZodObject<any>;
-  account?: z.ZodObject<any>;
+  transfer?: z.AnyZodObject;
+  hold?: z.AnyZodObject;
+  journal?: z.AnyZodObject;
+  account?: z.AnyZodObject;
 }
 
-export function defineLedger(schema: LedgerSchema): LedgerSchema {
+export function defineLedger<const T extends LedgerSchema>(schema: T): T {
   return schema;
 }

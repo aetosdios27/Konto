@@ -65,14 +65,15 @@ This connects to your Postgres instance, sets up the `_konto_migrations` trackin
 Create a `konto.config.ts` in your project root:
 
 ```typescript
+import { z } from "zod";
 import { defineLedger } from "@konto/cli";
 
 export default defineLedger({
-  transfer: {
-    invoice_id: "string",
-    notes: "string?",              // optional
-    tax_class: "enum:['GST', 'VAT', 'EXEMPT']",
-  },
+  transfer: z.object({
+    invoice_id: z.string(),
+    notes: z.string().optional(),
+    tax_class: z.enum(["GST", "VAT", "EXEMPT"]),
+  }),
 });
 ```
 
@@ -87,13 +88,10 @@ This outputs a strictly-typed SDK to `node_modules/.konto` — instantly availab
 ### Step 4: Move Money
 
 ```typescript
-import { createVercelAdapter } from "@konto/adapters";
 import { transfer, getBalance } from ".konto";
 
-const db = createVercelAdapter(process.env.DATABASE_URL!);
-
 // Execute an atomic, balanced, audited transfer
-const { journalId } = await transfer(db, {
+const { journalId } = await transfer({
   entries: [
     { accountId: MERCHANT_ID, amount: -5000n },   // debit ₹50.00
     { accountId: PLATFORM_ID, amount: 5000n },     // credit ₹50.00
@@ -104,7 +102,7 @@ const { journalId } = await transfer(db, {
 });
 
 // Query the true liquid balance (entries minus active holds)
-const { balance } = await getBalance(db, MERCHANT_ID);
+const { balance } = await getBalance(MERCHANT_ID);
 console.log(`Available: ₹${balance / 100n}`);
 ```
 

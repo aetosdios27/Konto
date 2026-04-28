@@ -20,9 +20,13 @@ export async function generateCommand() {
     log.error(`Could not locate ${pc.cyan("konto.config.ts")} in your project root.`);
     log.message(
       `Please create one. Example:\n\n` +
+      pc.dim(`import { z } from "zod";\n`) +
       pc.dim(`import { defineLedger } from "@konto/cli";\n\n`) +
       pc.dim(`export default defineLedger({\n`) +
-      pc.dim(`  transfer: { invoice_id: "string", notes: "string?" }\n`) +
+      pc.dim(`  transfer: z.object({\n`) +
+      pc.dim(`    invoice_id: z.string(),\n`) +
+      pc.dim(`    notes: z.string().optional(),\n`) +
+      pc.dim(`  }),\n`) +
       pc.dim(`});`)
     );
     process.exit(1);

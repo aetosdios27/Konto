@@ -28,6 +28,8 @@ The root cause: **the type system and runtime validation had no opinion about wh
 
 Konto solves this by letting you define your metadata schema once using **Zod**, then generating a typed client that enforces it at compile time *and* validates it at runtime.
 
+`defineLedger()` is intentionally typed as a generic identity helper: it returns the exact Zod object map you pass in, rather than widening it to a loose interface. That detail is what allows the generated `.d.ts` file to preserve your literal schema shapes and expose precise metadata inference back to application code.
+
 ### The `defineLedger` API
 
 Create a `konto.config.ts` in your project root:
@@ -94,7 +96,9 @@ import type config from "../../konto.config";
 import type { z } from "zod";
 
 type ExtractMetadata<T> = T extends z.ZodType<any, any, any> ? z.infer<T> : Record<string, any>;
-export type TransferMetadata = ExtractMetadata<typeof config.transfer>;
+type Config = typeof config;
+export type TransferMetadata =
+  Config extends { transfer: infer T } ? ExtractMetadata<T> : Record<string, any>;
 ```
 
 The developer now gets full autocomplete on `metadata.invoice_id`, compile-time errors on `metadata.invoce_id`, and type errors if they forget `order_ref`.
@@ -130,7 +134,18 @@ export async function transfer(payload) {
 }
 ```
 
-There is massive power in this abstraction. The `.konto` layer evaluates the exact same Zod schema you exported, providing an impenetrable wall of runtime validation before funds ever move. 
+There is massive power in this abstraction. The `.konto` layer evaluates the exact same Zod schema you exported, providing an impenetrable wall of runtime validation before funds ever move.
+
+The generated client also intentionally hides the database handle from the public call signature. Application code calls:
+
+```typescript
+import { transfer, getBalance } from ".konto";
+
+await transfer({ entries: [...], metadata: {...} });
+const { balance } = await getBalance(accountId);
+```
+
+The proxy owns adapter lookup internally, either through `setKontoAdapter()` or a lazy `DATABASE_URL`-backed singleton.
 
 ### Why `node_modules/` Instead of `src/`?
 
@@ -160,5 +175,5 @@ Developer writes konto.config.ts (with Zod)
    import { transfer } from '.konto'
          │
          ▼
-   Full autocomplete. Compile-time safety. Runtime validation. Zero friction.
+   Full autocomplete. Compile-time safety. Runtime validation. No manual DB argument.
 ```

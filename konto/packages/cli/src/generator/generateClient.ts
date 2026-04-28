@@ -19,12 +19,13 @@ import type postgres from "postgres";
 import type { z } from "zod";
 import type config from "../../konto.config";
 
+type Config = typeof config;
 type ExtractMetadata<T> = T extends z.ZodType<any, any, any> ? z.infer<T> : Record<string, any>;
 
-export type TransferMetadata = ExtractMetadata<typeof config.transfer>;
-export type HoldMetadata = ExtractMetadata<typeof config.hold>;
-export type JournalMetadata = ExtractMetadata<typeof config.journal>;
-export type AccountMetadata = ExtractMetadata<typeof config.account>;
+export type TransferMetadata = Config extends { transfer: infer T } ? ExtractMetadata<T> : Record<string, any>;
+export type HoldMetadata = Config extends { hold: infer T } ? ExtractMetadata<T> : Record<string, any>;
+export type JournalMetadata = Config extends { journal: infer T } ? ExtractMetadata<T> : Record<string, any>;
+export type AccountMetadata = Config extends { account: infer T } ? ExtractMetadata<T> : Record<string, any>;
 
 export type CustomTransferPayload = Omit<TransferPayload, "metadata"> & { metadata?: TransferMetadata };
 export type CustomHoldPayload = Omit<HoldPayload, "metadata"> & { metadata?: HoldMetadata };
