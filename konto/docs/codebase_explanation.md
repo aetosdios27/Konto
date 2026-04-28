@@ -56,7 +56,7 @@ Defined specialized domain errors to clearly bubble up faults to consumer applic
 - `KontoInvalidEntryError`
 
 ### 4. Tests & Quality
-- The testing framework relies on **Vitest** for script running alongside **Testcontainers** (`@testcontainers/postgresql`). This allows spinning up actual isolated PostgreSQL instances natively for flawless integration testing rather than using mock DB logic.
+- The testing framework relies on **Vitest** for script running alongside **Testcontainers** (`@testcontainers/postgresql`). This allows spinning up actual isolated PostgreSQL instances natively for flawless integration testing rather than using mock DB logic. The test suite successfully verifies critical constraint enforcement (such as the deferred zero-sum trigger correctly catching unbalanced journals) and complex hold lifecycle regressions (ensuring committed/rolled-back holds release funds properly and `NULL expires_at` holds function correctly).
 
 ---
 
@@ -75,6 +75,7 @@ Defined specialized domain errors to clearly bubble up faults to consumer applic
 10. **Adapters Expansion (Phase 3)**: Supported `@vercel/postgres`, `@neondatabase/serverless`, and `@supabase/supabase-js` natively in `@konto/adapters`, guaranteeing platform-agnostic runtime stability across modern edge/serverless Postgres providers.
 11. **Global Singleton Proxy (Phase 3)**: Engineered a Prisma-like singleton connection architecture in the generated `.konto` package. If developers don't inject an explicit adapter, `.konto` automatically reads `DATABASE_URL` and establishes a highly optimized pool, delivering a true zero-configuration "it just works" experience.
 12. **Adversarial Hardening (Phase 6)**: Successfully patched the ledger engine against severe adversarial vectors (Phantom Money, Expired Hold Double Spends, Cross-Currency injections). Escrows are now transitioned instead of deleted, journals are enforced natively with DEFERRED zero-sum constraints, and the generated `.konto` proxy fails violently if Zod limits are bypassed at runtime.
+13. **Real Postgres Verification & Publishing Prep (Phase 7)**: Successfully verified the core test suite natively against real PostgreSQL instances via Testcontainers, confirming core constraint enforcement (deferred zero-sum triggers correctly rejecting unbalanced fixtures) and hold regression compliance. Configured clean npm publishing tarballs (`sideEffects`, `peerDependencies`, baseline metadata like `LICENSE` and `SECURITY.md`).
 **Missing / To-Be-Done 🚧**
 1. **Frontend / Studio App (`apps/studio`)**: Entirely missing. Needs a graphical interface to view accounts and journals.
 2. **API Layer**: Missing a network-facing API encapsulation. The raw `@konto/core` package still expects a database instance and payload, while the generated `.konto` proxy hides adapter lookup for in-process application code. There is still no REST/GraphQL layer natively exposed to wire the ledger into external microservices across a network.

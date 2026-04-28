@@ -1,22 +1,48 @@
 {
   "name": "@konto/core",
   "version": "0.1.0",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "description": "Strictly-typed double-entry ledger primitives for PostgreSQL.",
+  "license": "MIT",
+  "homepage": "https://github.com/aetosdios27/Konto#readme",
+  "bugs": {
+    "url": "https://github.com/aetosdios27/Konto/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aetosdios27/Konto.git",
+    "directory": "packages/core"
+  },
+  "keywords": [
+    "ledger",
+    "accounting",
+    "double-entry",
+    "postgres",
+    "typescript"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "schema.sql"
+  ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup src/index.ts --dts --format esm --clean",
     "test": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@konto/types": "workspace:^",
-    "postgres": "^3.4.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {

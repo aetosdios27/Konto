@@ -1,11 +1,66 @@
 {
   "name": "@konto/adapters",
-  "version": "1.0.0",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "version": "0.1.0",
+  "description": "Provider-specific PostgreSQL adapters for Konto.",
+  "license": "MIT",
+  "homepage": "https://github.com/aetosdios27/Konto#readme",
+  "bugs": {
+    "url": "https://github.com/aetosdios27/Konto/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aetosdios27/Konto.git",
+    "directory": "packages/adapters"
+  },
+  "keywords": [
+    "ledger",
+    "postgres",
+    "adapters",
+    "vercel",
+    "neon"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm --clean",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
-    "@konto/types": "workspace:*",
+    "@konto/types": "workspace:^"
+  },
+  "peerDependencies": {
     "@neondatabase/serverless": "^1.1.0",
-    "@vercel/postgres": "^0.10.0"
+    "@vercel/postgres": "^0.10.0",
+    "postgres": "^3.4.5"
+  },
+  "peerDependenciesMeta": {
+    "@neondatabase/serverless": {
+      "optional": true
+    },
+    "@vercel/postgres": {
+      "optional": true
+    },
+    "postgres": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.2"
   }
 }

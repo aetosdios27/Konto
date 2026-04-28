@@ -44,11 +44,13 @@ describe("Konto Core Engine", () => {
     `;
 
     const [j] =
-      await sql`INSERT INTO konto_journals (description) VALUES ('genesis') RETURNING id`;
+      await sql`INSERT INTO konto_journals (account_id, description) VALUES (${a}, 'genesis') RETURNING id`;
 
     await sql`
       INSERT INTO konto_entries (journal_id, account_id, amount)
-      VALUES (${j.id}, ${a}, ${startingBalance.toString()})
+      VALUES
+        (${j.id}, ${a}, ${startingBalance.toString()}),
+        (${j.id}, ${external}, ${(-startingBalance).toString()})
     `;
 
     return { a, b, external };
@@ -60,6 +62,7 @@ describe("Konto Core Engine", () => {
     const { a, b } = await setupAccounts(1000n);
 
     const { journalId } = await transfer(sql, {
+      accountId: a,
       entries: [
         { accountId: a, amount: -300n },
         { accountId: b, amount: 300n },
@@ -83,6 +86,7 @@ describe("Konto Core Engine", () => {
 
     await expect(
       transfer(sql, {
+        accountId: a,
         entries: [
           { accountId: a, amount: -600n },
           { accountId: b, amount: 600n },
@@ -100,6 +104,7 @@ describe("Konto Core Engine", () => {
 
     await expect(
       transfer(sql, {
+        accountId: a,
         entries: [
           { accountId: a, amount: -100n },
           { accountId: b, amount: 90n },
@@ -113,6 +118,7 @@ describe("Konto Core Engine", () => {
     const key = `idemp-${Date.now()}`;
 
     await transfer(sql, {
+      accountId: a,
       idempotencyKey: key,
       entries: [
         { accountId: a, amount: -50n },
@@ -122,6 +128,7 @@ describe("Konto Core Engine", () => {
 
     await expect(
       transfer(sql, {
+        accountId: a,
         idempotencyKey: key,
         entries: [
           { accountId: a, amount: -50n },
@@ -136,6 +143,7 @@ describe("Konto Core Engine", () => {
 
     await expect(
       transfer(sql, {
+        accountId: a,
         entries: [
           { accountId: a, amount: 0n },
           { accountId: b, amount: 0n },
@@ -149,6 +157,7 @@ describe("Konto Core Engine", () => {
 
     await expect(
       transfer(sql, {
+        accountId: a,
         entries: [
           { accountId: a, amount: -50n },
           { accountId: a, amount: 50n },
@@ -163,6 +172,7 @@ describe("Konto Core Engine", () => {
 
     const promises = Array.from({ length: CONCURRENCY }, (_, i) =>
       transfer(sql, {
+        accountId: a,
         idempotencyKey: `ci-concurrent-${Date.now()}-${i}`,
         entries: [
           { accountId: a, amount: -10n },

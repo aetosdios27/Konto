@@ -1,20 +1,46 @@
 {
   "name": "@konto/cli",
   "version": "0.1.0",
+  "description": "CLI and typed client generator for Konto ledgers.",
+  "license": "MIT",
+  "homepage": "https://github.com/aetosdios27/Konto#readme",
+  "bugs": {
+    "url": "https://github.com/aetosdios27/Konto/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aetosdios27/Konto.git",
+    "directory": "packages/cli"
+  },
+  "keywords": [
+    "ledger",
+    "cli",
+    "codegen",
+    "postgres",
+    "typescript"
+  ],
   "type": "module",
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "migrations"
+  ],
   "bin": {
     "konto": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --clean --minify",
+    "build": "tsup src/index.ts --dts --format esm --clean --minify",
     "dev": "tsup src/index.ts --format esm --watch",
     "typecheck": "tsc --noEmit"
   },
@@ -25,12 +51,15 @@
     "dotenv": "^16.4.5",
     "jiti": "^2.6.1",
     "picocolors": "^1.0.1",
-    "postgres": "^3.4.5",
-    "zod": "^3.23.8"
+    "postgres": "^3.4.5"
+  },
+  "peerDependencies": {
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22",
     "tsup": "^8.3.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "zod": "^3.25.76"
   }
 }

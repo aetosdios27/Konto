@@ -46,7 +46,7 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
     `;
 
     const [journal] =
-      await sql`INSERT INTO konto_journals (description) VALUES ('genesis') RETURNING id`;
+      await sql`INSERT INTO konto_journals (account_id, description) VALUES (${alice}, 'genesis') RETURNING id`;
 
     await sql`
       INSERT INTO konto_entries (journal_id, account_id, amount)
@@ -63,9 +63,11 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
     const INITIAL_FUNDING = 10000n;
     const TOTAL_SYSTEM_VALUE = BigInt(NUM_ACCOUNTS) * INITIAL_FUNDING;
     const CONCURRENCY = 1000;
+    const treasuryId = uuidv4();
 
     // 1. Setup 50 Accounts
     const accountIds: string[] = [];
+    await sql`INSERT INTO konto_accounts (id, name, currency) VALUES (${treasuryId}, 'Treasury', 'INR')`;
     for (let i = 0; i < NUM_ACCOUNTS; i++) {
         const id = uuidv4();
         await sql`INSERT INTO konto_accounts (id, name, currency) VALUES (${id}, ${'StressAccount_' + i}, 'INR')`;
@@ -73,14 +75,23 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
     }
 
     // 2. Genesis Funding
-    const [genesisJournal] = await sql`INSERT INTO konto_journals (description) VALUES ('genesis_funding') RETURNING id`;
+    const [genesisJournal] = await sql`INSERT INTO konto_journals (account_id, description) VALUES (${accountIds[0]}, 'genesis_funding') RETURNING id`;
     
     await sql`
       INSERT INTO konto_entries (journal_id, account_id, amount)
       SELECT * FROM UNNEST(
-        ${accountIds.map(() => genesisJournal.id)}::uuid[],
-        ${accountIds}::uuid[],
-        ${accountIds.map(() => INITIAL_FUNDING.toString())}::bigint[]
+        ${[
+          ...accountIds.map(() => genesisJournal.id),
+          genesisJournal.id,
+        ]}::uuid[],
+        ${[
+          ...accountIds,
+          treasuryId,
+        ]}::uuid[],
+        ${[
+          ...accountIds.map(() => INITIAL_FUNDING.toString()),
+          (-TOTAL_SYSTEM_VALUE).toString(),
+        ]}::bigint[]
       )
     `;
 
@@ -108,6 +119,7 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
         if (isTransfer) {
             promises.push(
                 transfer(sql, {
+                    accountId: a,
                     entries: [
                         { accountId: a, amount: -amount },
                         { accountId: b, amount: amount }
@@ -149,7 +161,9 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
 
     // 4. Verify Conservation of Value
     const [{ total }] = await sql<{ total: string }[]>`
-      SELECT COALESCE(SUM(amount), 0)::text as total FROM konto_entries
+      SELECT COALESCE(SUM(amount), 0)::text as total
+      FROM konto_entries
+      WHERE account_id = ANY(${accountIds}::uuid[])
     `;
 
     expect(BigInt(total)).toBe(TOTAL_SYSTEM_VALUE);

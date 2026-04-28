@@ -1,6 +1,36 @@
 {
   "name": "@konto/types",
-  "version": "1.0.0",
-  "main": "src/index.ts",
-  "types": "src/index.ts"
+  "version": "0.1.0",
+  "description": "Shared TypeScript interfaces for Konto database executors.",
+  "license": "MIT",
+  "homepage": "https://github.com/aetosdios27/Konto#readme",
+  "bugs": {
+    "url": "https://github.com/aetosdios27/Konto/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aetosdios27/Konto.git",
+    "directory": "packages/types"
+  },
+  "keywords": [
+    "ledger",
+    "types",
+    "typescript",
+    "postgres"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "src"
+  ]
 }

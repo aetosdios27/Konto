@@ -19,6 +19,7 @@ describe("Konto Read API", () => {
   let accountA: string;
   let accountB: string;
   let accountC: string;
+  let accountBank: string;
 
   beforeAll(async () => {
     container = await new PostgreSqlContainer("postgres:16-alpine").start();
@@ -32,23 +33,26 @@ describe("Konto Read API", () => {
     accountA = uuidv4();
     accountB = uuidv4();
     accountC = uuidv4();
+    accountBank = uuidv4();
 
     await sql`
       INSERT INTO konto_accounts (id, name, currency)
       VALUES 
         (${accountA}, 'Alice', 'INR'), 
         (${accountB}, 'Bob', 'INR'), 
-        (${accountC}, 'Charlie', 'INR')
+        (${accountC}, 'Charlie', 'INR'),
+        (${accountBank}, 'Bank', 'INR')
     `;
 
-    const [j] = await sql`INSERT INTO konto_journals (description) VALUES ('genesis') RETURNING id`;
+    const [j] = await sql`INSERT INTO konto_journals (account_id, description) VALUES (${accountA}, 'genesis') RETURNING id`;
 
     // Fund A with 10_000, Fund B with 5_000
     await sql`
       INSERT INTO konto_entries (journal_id, account_id, amount)
       VALUES 
         (${j.id}, ${accountA}, ${10000n.toString()}),
-        (${j.id}, ${accountB}, ${5000n.toString()})
+        (${j.id}, ${accountB}, ${5000n.toString()}),
+        (${j.id}, ${accountBank}, ${(-15000n).toString()})
     `;
 
     // Perform 5 transfers
@@ -57,15 +61,15 @@ describe("Konto Read API", () => {
     // B -> A: 50
     // C -> B: 10
     // B -> C: 300
-    await transfer(sql, { entries: [{ accountId: accountA, amount: -100n }, { accountId: accountB, amount: 100n }] });
+    await transfer(sql, { accountId: accountA, entries: [{ accountId: accountA, amount: -100n }, { accountId: accountB, amount: 100n }] });
     await new Promise(r => setTimeout(r, 10)); // Sleep strictly for sorting logic explicitly defining tie-breakers natively
-    await transfer(sql, { entries: [{ accountId: accountA, amount: -200n }, { accountId: accountC, amount: 200n }] });
+    await transfer(sql, { accountId: accountA, entries: [{ accountId: accountA, amount: -200n }, { accountId: accountC, amount: 200n }] });
     await new Promise(r => setTimeout(r, 10));
-    await transfer(sql, { entries: [{ accountId: accountB, amount: -50n }, { accountId: accountA, amount: 50n }] });
+    await transfer(sql, { accountId: accountB, entries: [{ accountId: accountB, amount: -50n }, { accountId: accountA, amount: 50n }] });
     await new Promise(r => setTimeout(r, 10));
-    await transfer(sql, { entries: [{ accountId: accountC, amount: -10n }, { accountId: accountB, amount: 10n }] });
+    await transfer(sql, { accountId: accountC, entries: [{ accountId: accountC, amount: -10n }, { accountId: accountB, amount: 10n }] });
     await new Promise(r => setTimeout(r, 10));
-    await transfer(sql, { entries: [{ accountId: accountB, amount: -300n }, { accountId: accountC, amount: 300n }] });
+    await transfer(sql, { accountId: accountB, entries: [{ accountId: accountB, amount: -300n }, { accountId: accountC, amount: 300n }] });
 
     // Hold 500 from Alice for Charlie
     await hold(sql, { accountId: accountA, recipientId: accountC, amount: 500n, metadata: {} });
