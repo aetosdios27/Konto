@@ -174,6 +174,7 @@ const konto = createKontoClient(neon(process.env.DATABASE_URL));
 - **[Client Generation](./docs/client-generation.md)** — How `defineLedger` and the `.konto` proxy trick work under the hood.
 - **[Adapters](./docs/adapters.md)** — How the KontoQueryExecutor interface works, per-adapter usage, edge case handling, and peer dependency configuration.
 - **[Codebase Explanation](./docs/codebase_explanation.md)** — Full module-by-module status and implementation notes.
+- **[Stripe Ledger](./apps/stripe-ledger/README.md)** — Standalone sidecar that translates Stripe webhooks into double-entry journal entries via `@konto/core`.
 
 ---
 
@@ -201,6 +202,7 @@ konto/
 │   ├── types/       # Generic Database Driver abstractions.
 │   └── adapters/    # First-party adapters (Vercel, Neon, Supabase).
 ├── apps/
+│   ├── stripe-ledger/ # Stripe webhook → Konto double-entry sidecar.
 │   └── studio/      # (Planned) Visual ledger dashboard.
 ├── docs/            # Architecture, client generation, codebase docs.
 └── konto.config.ts  # Example developer configuration.
