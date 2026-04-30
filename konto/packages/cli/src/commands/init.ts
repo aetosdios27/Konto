@@ -6,7 +6,6 @@ import path from "path";
 import { generateCommand } from "./generate";
 
 export async function initCommand() {
-  console.clear();
   intro(pc.bgBlack(pc.white(" KONTO ")));
 
   if (process.env.KONTO_INITIALIZED === "true") {

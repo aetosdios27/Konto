@@ -59,8 +59,8 @@ export async function transfer(
     }
 
     // 6. Pessimistic locks (Lexicographically sorted to mathematically prevent deadlocks)
-    const locked = await tx<{ id: string, currency: string }[]>`
-      SELECT id, currency FROM konto_accounts
+    const locked = await tx<{ id: string, currency: string, account_type: string }[]>`
+      SELECT id, currency, account_type FROM konto_accounts
       WHERE id = ANY(${accountIds}::uuid[])
       ORDER BY id
       FOR UPDATE
@@ -129,6 +129,11 @@ export async function transfer(
 
     for (const [accountId, net] of netByAccount) {
       if (net < 0n) {
+        const accountType = locked.find((r) => r.id === accountId)?.account_type;
+        if (accountType === "LIABILITY" || accountType === "EQUITY" || accountType === "REVENUE") {
+          continue; // These accounts carry credit balances and can go negative
+        }
+
         const current = balances.get(accountId) ?? 0n;
         if (current + net < 0n) throw new KontoInsufficientFundsError();
       }

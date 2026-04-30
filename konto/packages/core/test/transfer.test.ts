@@ -39,19 +39,20 @@ describe("Konto Core Engine", () => {
     const external = uuidv4();
 
     await sql`
-      INSERT INTO konto_accounts (id, name, currency)
-      VALUES (${a}, 'Alice', 'INR'), (${b}, 'Bob', 'INR'), (${external}, 'Bank', 'INR')
+      INSERT INTO konto_accounts (id, name, currency, account_type)
+      VALUES 
+        (${a}, ${'Alice-' + a}, 'INR', 'ASSET'), 
+        (${b}, ${'Bob-' + b}, 'INR', 'ASSET'), 
+        (${external}, ${'Bank-' + external}, 'INR', 'EQUITY')
     `;
 
-    const [j] =
-      await sql`INSERT INTO konto_journals (account_id, description) VALUES (${a}, 'genesis') RETURNING id`;
-
-    await sql`
-      INSERT INTO konto_entries (journal_id, account_id, amount)
-      VALUES
-        (${j.id}, ${a}, ${startingBalance.toString()}),
-        (${j.id}, ${external}, ${(-startingBalance).toString()})
-    `;
+    await transfer(sql as any, {
+      accountId: external,
+      entries: [
+        { accountId: external, amount: -startingBalance },
+        { accountId: a, amount: startingBalance },
+      ],
+    });
 
     return { a, b, external };
   }

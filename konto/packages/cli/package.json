@@ -40,8 +40,9 @@
     "konto": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts --dts --format esm --clean --minify",
+    "build": "tsup",
     "dev": "tsup src/index.ts --format esm --watch",
+    "test": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -57,9 +58,13 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@konto/core": "workspace:^",
+    "@testcontainers/postgresql": "^11.14.0",
     "@types/node": "^22",
+    "testcontainers": "^11.14.0",
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",
+    "vitest": "^2.1.9",
     "zod": "^3.25.76"
   }
 }

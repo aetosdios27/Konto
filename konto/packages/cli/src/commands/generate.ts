@@ -6,7 +6,6 @@ import { createJiti } from "jiti";
 import { generateClient } from "../generator/generateClient";
 
 export async function generateCommand() {
-  console.clear();
   intro(pc.bgBlack(pc.white(" KONTO GENERATOR ")));
 
   const s = spinner();

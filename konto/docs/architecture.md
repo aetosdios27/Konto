@@ -14,16 +14,19 @@ The node table. Every financial entity (user wallet, merchant account, platform 
 
 ```sql
 CREATE TABLE konto_accounts (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
-  name        TEXT NOT NULL,
-  currency    TEXT NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
-  metadata    JSONB,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+  name         TEXT NOT NULL UNIQUE,
+  account_type TEXT NOT NULL DEFAULT 'ASSET' CHECK (account_type IN ('ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE')),
+  currency     TEXT NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+  metadata     JSONB,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
 **Design decisions:**
+- **Account Types & Normal Balances** — Accounts are typed (`ASSET`, `LIABILITY`, `EQUITY`, `REVENUE`, `EXPENSE`). This determines if an account can hold a negative balance (normal credit balance) or is strictly guarded against dropping below zero.
+- **Unique Entity Resolution** — `name` is strictly `UNIQUE`. This prevents silent account duplication on client retries or microservice restarts.
 - **UUIDv7 primary keys** — Eliminates fragmentation of B-Trees at extreme scale. Allows keyset pagination on temporal sequences instead of pure randomness.
 - **ISO 4217 currency check** — The `CHECK (currency ~ '^[A-Z]{3}$')` constraint rejects malformed currency codes at the database level.
 - **`ON DELETE RESTRICT`** on all foreign keys pointing here — You cannot delete an account that has entries or active holds. The ledger is permanent.
@@ -138,6 +141,10 @@ WHERE a.id = $1
 ```
 
 Only `PENDING` holds participate in available-balance derivation. Historical `COMMITTED` and `ROLLED_BACK` rows remain in `konto_holds` for auditability but must never continue depressing spendable balance.
+
+### Balance Floor Constraints
+
+During mutations (transfers and holds), Konto enforces a strict zero-balance floor (`>= 0`) for `ASSET` and `EXPENSE` accounts to prevent overdrafts. However, `LIABILITY`, `EQUITY`, and `REVENUE` accounts carry normal credit balances. The engine automatically detects these account types and permits them to bypass the floor check (go negative) during transfers, aligning with standard double-entry accounting principles.
 
 ### The V8 Float Decay Patch
 

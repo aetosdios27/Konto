@@ -1,7 +1,8 @@
 -- 1. Accounts (immutable nodes)
 CREATE TABLE IF NOT EXISTS konto_accounts (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        TEXT NOT NULL,
+  name        TEXT NOT NULL UNIQUE,
+  account_type TEXT NOT NULL DEFAULT 'ASSET' CHECK (account_type IN ('ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE')),
   currency    TEXT NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
   metadata    JSONB,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -76,10 +76,11 @@ async function main() {
       const reqStart = performance.now();
       try {
         await transfer(sql, {
+          accountId: sender!,
           idempotencyKey: `real-hammer-${i}-${Date.now()}`,
           entries: [
-            { accountId: sender, amount: -100n },
-            { accountId: receiver, amount: 100n },
+            { accountId: sender!, amount: -100n },
+            { accountId: receiver!, amount: 100n },
           ],
         });
         success++;

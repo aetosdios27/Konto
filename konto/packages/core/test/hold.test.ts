@@ -38,22 +38,20 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
     const bank = uuidv4();
 
     await sql`
-      INSERT INTO konto_accounts (id, name, currency)
+      INSERT INTO konto_accounts (id, name, currency, account_type)
       VALUES
-        (${alice}, 'Alice', 'INR'),
-        (${bob}, 'Bob', 'INR'),
-        (${bank}, 'Bank', 'INR')
+        (${alice}, ${'Alice-' + alice}, 'INR', 'ASSET'),
+        (${bob}, ${'Bob-' + bob}, 'INR', 'ASSET'),
+        (${bank}, ${'Bank-' + bank}, 'INR', 'EQUITY')
     `;
 
-    const [journal] =
-      await sql`INSERT INTO konto_journals (account_id, description) VALUES (${alice}, 'genesis') RETURNING id`;
-
-    await sql`
-      INSERT INTO konto_entries (journal_id, account_id, amount)
-      VALUES
-        (${journal.id}, ${alice}, ${startingBalance.toString()}),
-        (${journal.id}, ${bank}, ${(-startingBalance).toString()})
-    `;
+    await transfer(sql as any, {
+      accountId: bank,
+      entries: [
+        { accountId: bank, amount: -startingBalance },
+        { accountId: alice, amount: startingBalance },
+      ],
+    });
 
     return { alice, bob, bank };
   }
