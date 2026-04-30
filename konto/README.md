@@ -175,6 +175,7 @@ const konto = createKontoClient(neon(process.env.DATABASE_URL));
 - **[Adapters](./docs/adapters.md)** — How the KontoQueryExecutor interface works, per-adapter usage, edge case handling, and peer dependency configuration.
 - **[Codebase Explanation](./docs/codebase_explanation.md)** — Full module-by-module status and implementation notes.
 - **[Stripe Ledger](./apps/stripe-ledger/README.md)** — Standalone sidecar that translates Stripe webhooks into double-entry journal entries via `@konto/core`.
+- **[MCP Server](./apps/mcp-server/README.md)** — Headless, stdio-based machine endpoint for autonomous agent finance via the Model Context Protocol.
 
 ---
 
@@ -202,6 +203,7 @@ konto/
 │   ├── types/       # Generic Database Driver abstractions.
 │   └── adapters/    # First-party adapters (Vercel, Neon, Supabase).
 ├── apps/
+│   ├── mcp-server/   # MCP stdio server for autonomous agent finance.
 │   ├── stripe-ledger/ # Stripe webhook → Konto double-entry sidecar.
 │   └── studio/      # (Planned) Visual ledger dashboard.
 ├── docs/            # Architecture, client generation, codebase docs.

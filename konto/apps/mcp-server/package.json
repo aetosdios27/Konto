@@ -1,0 +1,23 @@
+{
+  "name": "@konto/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Konto MCP Server — A headless, stdio-based machine endpoint for autonomous agent finance. Implements the Model Context Protocol with Staged Intent mutation oversight.",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build:binary": "bun build ./src/index.ts --compile --outfile dist/konto-mcp",
+    "typecheck": "bun x tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@konto/core": "workspace:*",
+    "@konto/types": "workspace:*",
+    "postgres": "^3.4.9",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.3"
+  }
+}
