@@ -8,23 +8,22 @@
  *
  *   1. Agent calls konto_transfer / konto_commit_hold / konto_rollback_hold
  *   2. We validate the payload, generate a deterministic idempotency key,
- *      and serialize the intent into a StagedIntent object.
+ *      and persist the intent to konto_staged_intents via stageIntent().
  *   3. We return the StagedIntent WITHOUT executing the mutation.
- *   4. The agent must present this intent to a human operator for
- *      cryptographic approval before it can be executed.
+ *   4. A human operator approves execution via `npx @konto/cli approve <id>`.
  *
  * await transfer() is NEVER called from this module.
  */
 
 import { randomUUID } from "crypto";
-import { TransferPayloadSchema, HoldPayloadSchema } from "@konto/core";
+import { TransferPayloadSchema, stageIntent } from "@konto/core";
 import type { KontoQueryExecutor } from "@konto/types";
 import { getAccount } from "@konto/core";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface StagedIntent {
-  /** Unique identifier for this staged intent */
+  /** Database-generated UUID from konto_staged_intents */
   intentId: string;
   /** ISO 8601 timestamp of when this intent was staged */
   stagedAt: string;
@@ -36,7 +35,7 @@ export interface StagedIntent {
   payload: Record<string, unknown>;
   /** Human-readable summary of the intent */
   summary: string;
-  /** Execution status — always PENDING from this module */
+  /** Execution status — always PENDING_HUMAN_APPROVAL from this module */
   status: "PENDING_HUMAN_APPROVAL";
   /** Instruction to the agent */
   instruction: string;
@@ -100,6 +99,13 @@ export async function kontoTransferStaged(
   const idempotencyKey = generateIdempotencyKey();
   const serialized = serializeBigIntsInPayload(payload) as Record<string, unknown>;
 
+  // Persist the intent to konto_staged_intents
+  const { intentId } = await stageIntent(sql, {
+    intentType: "TRANSFER",
+    idempotencyKey,
+    payload: serialized,
+  });
+
   // Build the human-readable summary
   const legs = entriesWithBigInt
     .map(
@@ -109,7 +115,7 @@ export async function kontoTransferStaged(
     .join("\n");
 
   return {
-    intentId: randomUUID(),
+    intentId,
     stagedAt: new Date().toISOString(),
     mutationType: "TRANSFER",
     idempotencyKey,
@@ -117,7 +123,9 @@ export async function kontoTransferStaged(
     summary: `Transfer with ${entriesWithBigInt.length} legs:\n${legs}`,
     status: "PENDING_HUMAN_APPROVAL",
     instruction:
-      "Intent staged successfully. Human cryptographic approval is required to execute this transaction. Present this StagedIntent to an authorized operator.",
+      "Intent persisted to konto_staged_intents. Run `npx @konto/cli approve " +
+      intentId +
+      "` to review and execute.",
   };
 }
 
@@ -149,24 +157,36 @@ export async function kontoCommitHoldStaged(
     );
   }
 
+  const idempotencyKey = generateIdempotencyKey();
+  const intentPayload = {
+    holdId: params.holdId,
+    metadata: params.metadata ?? {},
+    holdDetails: {
+      accountId: hold.account_id,
+      recipientId: hold.recipient_id,
+      amount: hold.amount,
+    },
+  };
+
+  // Persist the intent to konto_staged_intents
+  const { intentId } = await stageIntent(sql, {
+    intentType: "COMMIT_HOLD",
+    idempotencyKey,
+    payload: intentPayload,
+  });
+
   return {
-    intentId: randomUUID(),
+    intentId,
     stagedAt: new Date().toISOString(),
     mutationType: "COMMIT_HOLD",
-    idempotencyKey: generateIdempotencyKey(),
-    payload: {
-      holdId: params.holdId,
-      metadata: params.metadata ?? {},
-      holdDetails: {
-        accountId: hold.account_id,
-        recipientId: hold.recipient_id,
-        amount: hold.amount,
-      },
-    },
+    idempotencyKey,
+    payload: intentPayload,
     summary: `Commit hold ${params.holdId}: ${hold.amount} from ${hold.account_id} → ${hold.recipient_id}`,
     status: "PENDING_HUMAN_APPROVAL",
     instruction:
-      "Intent staged successfully. Human cryptographic approval is required to execute this hold settlement. Present this StagedIntent to an authorized operator.",
+      "Intent persisted to konto_staged_intents. Run `npx @konto/cli approve " +
+      intentId +
+      "` to review and execute.",
   };
 }
 
@@ -197,22 +217,34 @@ export async function kontoRollbackHoldStaged(
     );
   }
 
+  const idempotencyKey = generateIdempotencyKey();
+  const intentPayload = {
+    holdId: params.holdId,
+    holdDetails: {
+      accountId: hold.account_id,
+      recipientId: hold.recipient_id,
+      amount: hold.amount,
+    },
+  };
+
+  // Persist the intent to konto_staged_intents
+  const { intentId } = await stageIntent(sql, {
+    intentType: "ROLLBACK_HOLD",
+    idempotencyKey,
+    payload: intentPayload,
+  });
+
   return {
-    intentId: randomUUID(),
+    intentId,
     stagedAt: new Date().toISOString(),
     mutationType: "ROLLBACK_HOLD",
-    idempotencyKey: generateIdempotencyKey(),
-    payload: {
-      holdId: params.holdId,
-      holdDetails: {
-        accountId: hold.account_id,
-        recipientId: hold.recipient_id,
-        amount: hold.amount,
-      },
-    },
+    idempotencyKey,
+    payload: intentPayload,
     summary: `Rollback hold ${params.holdId}: release ${hold.amount} back to ${hold.account_id}`,
     status: "PENDING_HUMAN_APPROVAL",
     instruction:
-      "Intent staged successfully. Human cryptographic approval is required to execute this hold rollback. Present this StagedIntent to an authorized operator.",
+      "Intent persisted to konto_staged_intents. Run `npx @konto/cli approve " +
+      intentId +
+      "` to review and execute.",
   };
 }
