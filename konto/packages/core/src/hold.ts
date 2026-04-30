@@ -6,6 +6,7 @@ import {
   KontoDuplicateTransactionError,
   KontoHoldNotFoundError,
 } from "./errors";
+import { getKontoLogger } from "./logger";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function sortedUniqueIds(accountIds: string[]): string[] {
@@ -31,6 +32,9 @@ export async function hold(
     throw new Error("konto: hold ttlMs exceeds 30 days maximum");
   }
 
+  const log = getKontoLogger();
+  log.debug("hold: beginning transaction", { accountId: parsed.accountId, recipientId: parsed.recipientId, amount: parsed.amount.toString() });
+
   return db.begin(async (tx) => {
     // Idempotency check scoped to account
     if (parsed.idempotencyKey) {
@@ -44,8 +48,8 @@ export async function hold(
 
     // Lock accounts pessimistically in lexicographical order to prevent deadlocks
     const accountIds = sortedUniqueIds([parsed.accountId, parsed.recipientId]);
-    const locked = await tx<{ id: string, currency: string }[]>`
-      SELECT id, currency FROM konto_accounts
+    const locked = await tx<{ id: string, currency: string, account_type: string }[]>`
+      SELECT id, currency, account_type FROM konto_accounts
       WHERE id = ANY(${accountIds}::uuid[])
       ORDER BY id
       FOR UPDATE
@@ -91,8 +95,15 @@ export async function hold(
 
     const currentBalance = rows[0] ? BigInt(rows[0].balance) : 0n;
 
-    if (currentBalance < parsed.amount) {
-      throw new KontoInsufficientFundsError();
+    // Enforce balance floor only for ASSET and EXPENSE accounts.
+    // LIABILITY, EQUITY, and REVENUE carry credit normal balances.
+    const senderType = locked.find((r) => r.id === parsed.accountId)?.account_type;
+    if (senderType !== "LIABILITY" && senderType !== "EQUITY" && senderType !== "REVENUE") {
+      if (currentBalance < parsed.amount) {
+        throw new KontoInsufficientFundsError();
+      }
+    } else {
+      log.debug("hold: floor bypass for credit-normal account", { accountId: parsed.accountId, accountType: senderType });
     }
 
     const expiresAt = parsed.ttlMs !== undefined ? new Date(Date.now() + parsed.ttlMs) : null;
@@ -113,6 +124,7 @@ export async function hold(
     const holdRecord = holdRows[0];
     if (!holdRecord) throw new Error("konto: hold insert returned no rows");
 
+    log.info("hold: created", { holdId: holdRecord.id, accountId: parsed.accountId, amount: parsed.amount.toString() });
     return { holdId: holdRecord.id };
   });
 }
@@ -127,6 +139,9 @@ export async function commitHold(
   if (metadata !== undefined) {
     parsedMetadata = z.record(jsonSchema).parse(metadata);
   }
+
+  const log = getKontoLogger();
+  log.debug("commitHold: beginning", { holdId });
 
   return db.begin(async (tx) => {
     // Lock the hold record so no one else can rollback/commit
@@ -241,6 +256,7 @@ export async function commitHold(
       ) AS t(journal_id, account_id, amount)
     `;
 
+    log.info("commitHold: committed", { holdId, journalId: journal.id });
     return { journalId: journal.id };
   });
 }
@@ -250,6 +266,9 @@ export async function rollbackHold(
   db: KontoQueryExecutor,
   holdId: string,
 ): Promise<{ success: boolean }> {
+  const log = getKontoLogger();
+  log.debug("rollbackHold: beginning", { holdId });
+
   return db.begin(async (tx) => {
     // Lock the hold record so no one else can commit/rollback
     const holdLocked = await tx<{ id: string; account_id: string }[]>`
@@ -276,6 +295,7 @@ export async function rollbackHold(
         UPDATE konto_holds SET status = 'ROLLED_BACK' WHERE id = ${holdId}
     `;
 
+    log.info("rollbackHold: completed", { holdId, accountId: internalHold.account_id });
     return { success: true };
   });
 }

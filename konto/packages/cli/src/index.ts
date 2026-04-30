@@ -2,6 +2,7 @@ import "dotenv/config";
 import { cac } from "cac";
 import { initCommand } from "./commands/init";
 import { generateCommand } from "./commands/generate";
+import { approveCommand } from "./commands/approve";
 
 export { defineLedger } from "./config";
 
@@ -17,6 +18,12 @@ cli
   .command("generate", "Generate a strictly typed Konto client based on konto.config.ts")
   .action(async () => {
     await generateCommand();
+  });
+
+cli
+  .command("approve <intentId>", "Approve and execute a staged financial intent")
+  .action(async (intentId: string) => {
+    await approveCommand(intentId);
   });
 
 cli.help();

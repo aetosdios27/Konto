@@ -17,3 +17,17 @@ export interface KontoQueryExecutor {
   /** JSON parameter serialization helper */
   json(value: any): any;
 }
+
+/**
+ * KontoLogger is a dependency-injected observability interface.
+ * Inject via setKontoLogger() in @konto/core. If not injected,
+ * all log calls are silently no-oped — @konto/core stays dependency-free.
+ *
+ * Compatible with pino, winston, console, or any structured logger.
+ */
+export interface KontoLogger {
+  debug(msg: string, data?: Record<string, unknown>): void;
+  info(msg: string, data?: Record<string, unknown>): void;
+  warn(msg: string, data?: Record<string, unknown>): void;
+  error(msg: string, data?: Record<string, unknown>): void;
+}

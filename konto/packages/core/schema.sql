@@ -109,3 +109,17 @@ BEGIN
   RETURN v_snapshot_id;
 END;
 $$ LANGUAGE plpgsql;
+
+-- 6. Staged Intents (Agent Authorization Profile)
+CREATE TABLE IF NOT EXISTS konto_staged_intents (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  intent_type     TEXT NOT NULL CHECK (intent_type IN ('TRANSFER', 'COMMIT_HOLD', 'ROLLBACK_HOLD')),
+  idempotency_key TEXT UNIQUE,
+  payload         JSONB NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'EXECUTED', 'REJECTED', 'EXPIRED')),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  executed_at     TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_staged_intents_status
+  ON konto_staged_intents (status) WHERE status = 'PENDING';

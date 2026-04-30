@@ -6,6 +6,7 @@ import {
   KontoDuplicateTransactionError,
   KontoInvalidEntryError,
 } from "./errors";
+import { getKontoLogger } from "./logger";
 
 // ── helpers ────────────────────────────────────────────────────────────────
 function assertValidEntries(
@@ -47,6 +48,9 @@ export async function transfer(
   const accountIds = sortedUniqueIds(parsed.entries);
 
   // 4. Execute atomic transaction
+  const log = getKontoLogger();
+  log.debug("transfer: beginning transaction", { accountId: parsed.accountId, entryCount: parsed.entries.length });
+
   return db.begin(async (tx) => {
     // 5. Idempotency check scoped to account
     if (parsed.idempotencyKey) {
@@ -59,12 +63,14 @@ export async function transfer(
     }
 
     // 6. Pessimistic locks (Lexicographically sorted to mathematically prevent deadlocks)
+    const lockStart = performance.now();
     const locked = await tx<{ id: string, currency: string, account_type: string }[]>`
       SELECT id, currency, account_type FROM konto_accounts
       WHERE id = ANY(${accountIds}::uuid[])
       ORDER BY id
       FOR UPDATE
     `;
+    log.debug("transfer: locks acquired", { accountIds, lockMs: Math.round(performance.now() - lockStart) });
 
     if (locked.length !== accountIds.length) {
       const foundIds = new Set(locked.map((r) => r.id));
@@ -131,6 +137,7 @@ export async function transfer(
       if (net < 0n) {
         const accountType = locked.find((r) => r.id === accountId)?.account_type;
         if (accountType === "LIABILITY" || accountType === "EQUITY" || accountType === "REVENUE") {
+          log.debug("transfer: floor bypass for credit-normal account", { accountId, accountType, net: net.toString() });
           continue; // These accounts carry credit balances and can go negative
         }
 
@@ -174,6 +181,7 @@ export async function transfer(
       ) AS t(journal_id, account_id, amount)
     `;
 
+    log.info("transfer: committed", { journalId: journal.id, accountId: parsed.accountId, entryCount: parsed.entries.length });
     return { journalId: journal.id };
   });
 }
