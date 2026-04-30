@@ -324,23 +324,29 @@ CREATE TABLE konto_staged_intents (
 ```
 
 **Design decisions:**
-- **Staged, not executed** — When an agent calls `konto_transfer`, the payload is validated (Zod schema, zero-sum, account existence) and stored as a `PENDING` intent. The mutation is never called.
-- **Human approval loop** — A human operator reviews the intent via `npx @konto/cli approve <intent_id>`, which displays the financial impact, prompts for confirmation, and only then calls `executeIntent()` to execute the stored payload.
+- **Persisted, not ephemeral** — When an agent calls `konto_transfer` via MCP, the payload is validated (Zod schema, zero-sum, account existence) and persisted to `konto_staged_intents` via `stageIntent()`. The `intentId` returned to the agent is the database-generated UUID, not an ephemeral random value. The mutation is never called.
+- **Human approval loop** — A human operator reviews the intent via `npx @konto/cli approve <intent_id>`, which displays the financial impact, prompts for confirmation, and only then calls `executeIntent()` to execute the stored payload. The MCP server's response includes the exact CLI command in its `instruction` field.
 - **Terminal states** — Intents transition to `EXECUTED` (approved and run), `REJECTED` (denied by operator), or `EXPIRED` (TTL exceeded). All states are immutable once set.
-- **Idempotency** — Each intent carries a `UNIQUE` idempotency key to prevent duplicate staging from agent retries.
+- **Idempotency** — Each intent carries a `UNIQUE` idempotency key (prefixed `mcp-`) to prevent duplicate staging from agent retries.
 
-### Execution Flow
+### End-to-End Pipeline
 
 ```
-Agent calls konto_transfer  ──▶  Validate payload  ──▶  INSERT INTO konto_staged_intents (PENDING)
-                                                                     │
-                                                                     ▼
-                                                        Human runs `konto approve <id>`
-                                                                     │
-                                                              ┌──────┴──────┐
-                                                              ▼             ▼
-                                                         EXECUTED      REJECTED
-                                                     (transfer() runs)  (no mutation)
+MCP Agent                          konto_staged_intents              Human Operator
+   │                                       │                              │
+   │  konto_transfer(payload)              │                              │
+   │──────────────────────────▶ validate   │                              │
+   │                           + persist ──▶ INSERT (PENDING)             │
+   │◀── StagedIntent {intentId, instruction}│                             │
+   │                                        │                             │
+   │  "Run: konto approve <id>"             │   npx @konto/cli approve <id>
+   │                                        │◀────────────────────────────│
+   │                                        │   Display financial impact  │
+   │                                        │   Confirm? (y/N)            │
+   │                                        │                     ┌──────┴──────┐
+   │                                        │                     ▼             ▼
+   │                                        │──▶ EXECUTED      REJECTED
+   │                                        │  (transfer() runs) (no mutation)
 ```
 
 ---
