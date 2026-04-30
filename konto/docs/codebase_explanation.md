@@ -33,15 +33,18 @@ The PostgreSQL schema reflects a classic immutable double-entry architecture hea
   - **Financial Safety**: A strict check constraint (`amount != 0`) avoids meaningless entries. A `DEFERRED` PostgreSQL constraint trigger rigorously forces `SUM(amount) = 0` per journal, making out-of-balance entries physically impossible to commit.
 - **`konto_holds`**: An ephemeral table managing the two-phase commit (Escrow) system. Tracks earmarked funds, but only `PENDING` rows reduce available balance. Built with strict `expires_at` TTL checks (capped at 30 days maximum) and is strictly state-based (`PENDING`, `COMMITTED`, `ROLLED_BACK`) to ensure pristine, undeleted audit trails.
 - **`konto_balance_snapshots`**: Foundation for mathematically sound O(1) balance read scaling. Checkpoints balances securely to drastically truncate the derivation scan ranges. Arbitrary INSERTs are revoked in favor of a secure `take_snapshot(account_id)` stored procedure.
+- **`konto_staged_intents`**: The Agent Authorization Profile (AAP) oversight table. Stores validated financial mutation payloads from autonomous agents as `PENDING` intents. Human operators approve or reject them via the CLI before execution.
 
 ### 2. Transaction Engines (`transfer.ts` & `hold.ts`)
 The `transfer` and `hold` functions manage the complexity of logging financial movements reliably and atomically.
 - **Zod Validation**: Validates payloads on input. Crucially, uses **`bigint`** (not `number`) to eliminate any chance of IEEE 754 floating-point errors.
 - **Zero-sum Constraints**: Mathematically enforces that `Sum(Debits) + Sum(Credits) = 0` prior to any database calls, and re-validates under strict locks.
 - **Deadlock Prevention**: Deterministically sorts account IDs lexicographically and requests `FOR UPDATE` pessimistic locks in that specific order, preventing standard DB deadlocks across simultaneous complex transfers and holds.
-- **On-the-fly Balance Calculation**: It avoids storing stale or out-of-sync balances. The system dynamically aggregates `SUM(amount)` across `konto_entries` and explicitly subtracts only active pending holds (`konto_holds` rows with `status = 'PENDING'` that are not expired) via a zero-copy indexed `LEFT JOIN` algorithm to safely prevent double-spends (`KontoInsufficientFundsError`).
+- **Account-Type-Aware Balance Floors**: Both `transfer()` and `hold()` fetch `account_type` during the pessimistic lock query. The zero-balance floor (`>= 0`) is enforced only for `ASSET` and `EXPENSE` accounts. `LIABILITY`, `EQUITY`, and `REVENUE` accounts bypass the floor, permitting normal credit balances.
+- **On-the-fly Balance Calculation**: The system dynamically aggregates `SUM(amount)` across `konto_entries` and explicitly subtracts only active pending holds (`konto_holds` rows with `status = 'PENDING'` that are not expired) via a zero-copy indexed `LEFT JOIN` algorithm to safely prevent double-spends (`KontoInsufficientFundsError`).
 - **High-performance Bulk Inserts**: Uses PostgreSQL's `UNNEST` capabilities to batch insert all legs of the journal entries simultaneously in a single atomic payload.
 - **Hold Mechanics**: Implements a strict two-phase commit escrow. You can initialize a `hold()`, and eventually resolve it permanently via `commitHold()` or abort via `rollbackHold()`. Under locks, the engine recursively validates expiration limits and dynamically derives balances to eradicate double-spend exploits.
+- **Structured Observability**: All critical paths (lock acquisition, balance derivation, floor bypass, commit) are instrumented with structured log calls via the dependency-injected `KontoLogger` interface. If no logger is set, all calls are silently no-oped — @konto/core remains zero-dependency.
 
 ### 3. Read API (`read.ts`)
 The ledger avoids N+1 queries by offloading logic natively to PostgreSQL and aggressively mitigating Node.js floating-point decay lines across BigInt data limits.
@@ -56,7 +59,26 @@ Defined specialized domain errors to clearly bubble up faults to consumer applic
 - `KontoDuplicateTransactionError`
 - `KontoInvalidEntryError`
 
-### 4. Tests & Quality
+### 5. Staged Intent System (`intent.ts`)
+Implements the backend of the Agent Authorization Profile:
+- **`stageIntent(payload)`**: Inserts a validated intent (TRANSFER, COMMIT_HOLD, ROLLBACK_HOLD) into `konto_staged_intents` as PENDING.
+- **`executeIntent(id)`**: Reads a PENDING intent under a `FOR UPDATE` lock, executes the stored mutation payload via the appropriate core function (`transfer()`, `commitHold()`, `rollbackHold()`), and marks the intent as EXECUTED.
+- **`rejectIntent(id)`**: Marks a PENDING intent as REJECTED without executing the mutation.
+- **`getPendingIntents()`**: Returns all PENDING intents for human review.
+
+### 6. Logger (`logger.ts`)
+Dependency-injected structured observability:
+- **`setKontoLogger(logger)`**: Injects a `KontoLogger`-compatible object (pino, winston, console). If not called, all log calls are silently no-oped.
+- **`getKontoLogger()`**: Returns the current logger (or the no-op default).
+
+### 7. Snapshot Daemon (`scripts/snapshot-daemon.ts`)
+A lightweight Node worker that defuses the O(N) `getBalance()` degradation:
+- Polls the database every 60 seconds (configurable via `SNAPSHOT_INTERVAL_MS`).
+- Finds all accounts with more than 1,000 new entries (configurable via `SNAPSHOT_THRESHOLD`) since their last recorded snapshot.
+- Calls `take_snapshot(account_id)` for each qualifying account.
+- Handles graceful shutdown via `SIGINT`/`SIGTERM`.
+
+### 8. Tests & Quality
 - The testing framework relies on **Vitest** for script running alongside **Testcontainers** (`@testcontainers/postgresql`). This allows spinning up actual isolated PostgreSQL instances natively for flawless integration testing rather than using mock DB logic. The test suite successfully verifies critical constraint enforcement (such as the deferred zero-sum trigger correctly catching unbalanced journals) and complex hold lifecycle regressions (ensuring committed/rolled-back holds release funds properly and `NULL expires_at` holds function correctly).
 
 ---
@@ -85,11 +107,16 @@ Defined specialized domain errors to clearly bubble up faults to consumer applic
     - **Unit tests** added for tagged template stitching across all edge cases: single value, multiple values, BigInt, null, and array — verified on both Vercel and Neon adapters without a live database.
 15. **Production Hardening & Account Types (Phase 9)**: Addressed critical schema drift between development environments and production by standardizing constraints via migrations `0003`, `0004`, and `0005`. Implemented `account_type` support (`ASSET`, `LIABILITY`, `EQUITY`, `REVENUE`, `EXPENSE`) into `@konto/core` with corresponding balance-floor constraint logic (allowing `LIABILITY`, `EQUITY`, and `REVENUE` accounts to natively carry negative credit balances). Enforced a strict `UNIQUE` constraint on account names and transitioned all genesis funding in the test suites from raw SQL inserts to proper `transfer()` mutations using `EQUITY` accounts. Shifted the CLI E2E test suite to execute natively against Testcontainers to verify the complete initial migration lifecycle.
 16. **MCP Server — Agent Finance Endpoint (Phase 10)**: Scaffolded `apps/mcp-server` as a headless, stdio-based Model Context Protocol server compiled to a single Bun binary. Implements 4 read tools (`konto_get_balance`, `konto_get_journals`, `konto_list_accounts`, `konto_list_active_holds`) returning deeply structured, self-describing JSON objects. Implements 3 mutation tools (`konto_transfer`, `konto_commit_hold`, `konto_rollback_hold`) using the **Staged Intent** pattern — payloads are fully validated against Zod schemas and account existence, but mutations are never executed. Instead, a serialized `StagedIntent` object is returned requiring human cryptographic approval, enforcing the Agent Authorization Profile (AAP) oversight constraint. Zero `console.log()` usage — all diagnostics route to `stderr` to protect the JSON-RPC transport on `stdout`.
+17. **Operational Hardening (Phase 11)**: Four targeted upgrades to close production gaps:
+    - **hold() balance floor patch**: `hold()` now fetches `account_type` during the pessimistic lock and bypasses the zero-balance floor for `LIABILITY`, `EQUITY`, and `REVENUE` accounts — matching the logic already in `transfer()`. This eliminates a lurking accounting inconsistency.
+    - **Staged Intent storage & approval loop**: Migration `0006_staged_intents.sql` adds the `konto_staged_intents` table. Core functions `stageIntent()`, `executeIntent()`, `rejectIntent()`, and `getPendingIntents()` close the approval loop. CLI command `npx @konto/cli approve <intent_id>` provides the human-facing approval interface with financial impact display and confirmation prompt.
+    - **Dependency-injected observability**: `KontoLogger` interface added to `@konto/types`. `setKontoLogger()`/`getKontoLogger()` singleton in `@konto/core`. Instrumented all 4 mutation paths (`transfer`, `hold`, `commitHold`, `rollbackHold`) with structured debug/info logs at lock acquisition, floor bypass, and commit points. No-op by default — @konto/core remains dependency-free.
+    - **Snapshot daemon**: `packages/core/scripts/snapshot-daemon.ts` — a Node worker polling every 60s, finding accounts with >1000 new entries since their last snapshot, and calling `take_snapshot()` to maintain O(1) `getBalance()` performance at scale.
 
 **Missing / To-Be-Done 🚧**
 1. **Frontend / Studio App (`apps/studio`)**: Entirely missing. Needs a graphical interface to view accounts and journals.
-2. **MCP Intent Execution Endpoint**: The MCP server stages intents but does not yet provide a human-facing execution endpoint to approve and execute `StagedIntent` objects. This requires a separate authenticated API or CLI command.
-3. **Automated Balance Snapshots**: The `take_snapshot()` stored procedure exists but requires manual invocation. A background worker or `pg_cron` scheduler should automate this for $O(1)$ read performance at scale.
+2. **MCP-to-Database Intent Bridge**: The MCP server currently returns `StagedIntent` objects in JSON-RPC responses but does not persist them to `konto_staged_intents` automatically. Wiring `stageIntent()` into the MCP mutation tools would complete the end-to-end agent-to-CLI approval pipeline.
+3. **Intent Expiration Cron**: PENDING intents do not expire automatically. A TTL-based expiration mechanism (e.g., `pg_cron` or a daemon) should mark stale intents as EXPIRED.
 
 ## Conclusion
-The repository has an extremely solid mathematical/accounting foundation mimicking industry-standard core banking ledgers. Both the mutation engine and Read API are fully complete inside the core library. The system now extends beyond human developers — the MCP server enables autonomous LLM agents to query the ledger in real time while enforcing strict human-in-the-loop oversight for all financial mutations via the Staged Intent pattern. The immediate next necessary steps involve the `studio` graphical dashboard and the intent execution approval endpoint.
+The repository has an extremely solid mathematical/accounting foundation mimicking industry-standard core banking ledgers. Both the mutation engine and Read API are fully complete inside the core library. The system now extends beyond human developers — the MCP server enables autonomous LLM agents to query the ledger in real time while enforcing strict human-in-the-loop oversight for all financial mutations via the Staged Intent pattern. The operational layer (observability, automated snapshots, approval CLI) has been hardened for production readiness. The immediate next necessary steps involve the `studio` graphical dashboard and wiring the MCP server to persist intents to the database.

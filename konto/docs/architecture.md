@@ -6,7 +6,7 @@ This document describes the internal systems architecture of the Konto Protocol.
 
 ## 1. The Core Schema
 
-Konto's data model consists of four PostgreSQL tables. They are designed to be immutable-first, append-only where possible, and strictly constrained at the database level so that application bugs cannot corrupt financial state.
+Konto's data model consists of five PostgreSQL tables and one agent oversight table. They are designed to be immutable-first, append-only where possible, and strictly constrained at the database level so that application bugs cannot corrupt financial state.
 
 ### `konto_accounts`
 
@@ -144,7 +144,7 @@ Only `PENDING` holds participate in available-balance derivation. Historical `CO
 
 ### Balance Floor Constraints
 
-During mutations (transfers and holds), Konto enforces a strict zero-balance floor (`>= 0`) for `ASSET` and `EXPENSE` accounts to prevent overdrafts. However, `LIABILITY`, `EQUITY`, and `REVENUE` accounts carry normal credit balances. The engine automatically detects these account types and permits them to bypass the floor check (go negative) during transfers, aligning with standard double-entry accounting principles.
+During mutations (`transfer()` and `hold()`), Konto enforces a strict zero-balance floor (`>= 0`) for `ASSET` and `EXPENSE` accounts to prevent overdrafts. However, `LIABILITY`, `EQUITY`, and `REVENUE` accounts carry normal credit balances. Both the transfer engine and the hold engine fetch `account_type` during the pessimistic lock query and automatically bypass the floor check for credit-normal accounts, aligning with standard double-entry accounting principles. This consistency was explicitly hardened — `hold()` previously used a flat check regardless of account type.
 
 ### The V8 Float Decay Patch
 
@@ -302,3 +302,87 @@ The escrow system has been battle-tested with a pathological benchmark: 1000+ co
 
 - **Zero deadlocks** — The lexicographical locking strategy holds under extreme concurrency.
 - **Strict conservation** — `Σ all balances` before the test equals `Σ all balances` after. No money is created or destroyed.
+
+---
+
+## 5. The Agent Authorization Profile (Staged Intents)
+
+Konto exposes a headless MCP (Model Context Protocol) server for autonomous LLM agents. Financial mutations from agents are **never executed directly**. Instead, they follow the **Staged Intent** pattern.
+
+### `konto_staged_intents`
+
+```sql
+CREATE TABLE konto_staged_intents (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  intent_type     TEXT NOT NULL CHECK (intent_type IN ('TRANSFER', 'COMMIT_HOLD', 'ROLLBACK_HOLD')),
+  idempotency_key TEXT UNIQUE,
+  payload         JSONB NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'EXECUTED', 'REJECTED', 'EXPIRED')),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  executed_at     TIMESTAMPTZ
+);
+```
+
+**Design decisions:**
+- **Staged, not executed** — When an agent calls `konto_transfer`, the payload is validated (Zod schema, zero-sum, account existence) and stored as a `PENDING` intent. The mutation is never called.
+- **Human approval loop** — A human operator reviews the intent via `npx @konto/cli approve <intent_id>`, which displays the financial impact, prompts for confirmation, and only then calls `executeIntent()` to execute the stored payload.
+- **Terminal states** — Intents transition to `EXECUTED` (approved and run), `REJECTED` (denied by operator), or `EXPIRED` (TTL exceeded). All states are immutable once set.
+- **Idempotency** — Each intent carries a `UNIQUE` idempotency key to prevent duplicate staging from agent retries.
+
+### Execution Flow
+
+```
+Agent calls konto_transfer  ──▶  Validate payload  ──▶  INSERT INTO konto_staged_intents (PENDING)
+                                                                     │
+                                                                     ▼
+                                                        Human runs `konto approve <id>`
+                                                                     │
+                                                              ┌──────┴──────┐
+                                                              ▼             ▼
+                                                         EXECUTED      REJECTED
+                                                     (transfer() runs)  (no mutation)
+```
+
+---
+
+## 6. Observability
+
+Konto implements dependency-injected structured logging via the `KontoLogger` interface. The core library remains zero-dependency — if no logger is injected, all log calls are silently no-oped.
+
+```typescript
+import { setKontoLogger } from '@konto/core';
+import pino from 'pino';
+
+setKontoLogger(pino()); // Compatible with pino, winston, console, or any structured logger
+```
+
+The following critical execution paths are instrumented:
+
+| Event | Level | Data |
+|---|---|---|
+| Transaction begin | `debug` | `accountId`, `entryCount` |
+| Lock acquisition | `debug` | `accountIds`, `lockMs` (timing) |
+| Floor bypass (credit-normal) | `debug` | `accountId`, `accountType`, `net` |
+| Transfer committed | `info` | `journalId`, `accountId`, `entryCount` |
+| Hold created | `info` | `holdId`, `accountId`, `amount` |
+| Hold committed | `info` | `holdId`, `journalId` |
+| Hold rolled back | `info` | `holdId`, `accountId` |
+
+---
+
+## 7. The Snapshot Daemon (O(1) Read Scaling)
+
+The `getBalance()` derivation engine references `konto_balance_snapshots` via `LATERAL` joins to avoid scanning the entire entry history. The `take_snapshot(account_id)` stored procedure checkpoints the current derived balance.
+
+Without periodic snapshots, `getBalance()` degrades from O(1) to O(N) as the entry log grows — a silent performance bomb at scale.
+
+The **snapshot daemon** (`packages/core/scripts/snapshot-daemon.ts`) is a lightweight Node worker that defuses this:
+
+1. **Polls every 60 seconds** (configurable via `SNAPSHOT_INTERVAL_MS`).
+2. **Identifies stale accounts** — queries for all accounts with more than 1,000 new entries (configurable via `SNAPSHOT_THRESHOLD`) since their last recorded snapshot.
+3. **Calls `take_snapshot()`** for each qualifying account.
+4. **Handles graceful shutdown** via `SIGINT`/`SIGTERM`.
+
+```bash
+DATABASE_URL="postgres://..." npx tsx packages/core/scripts/snapshot-daemon.ts
+```

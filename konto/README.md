@@ -130,6 +130,11 @@ The signatures below describe the generated `.konto` proxy. If you import direct
 | `getAccount(accountId)` | Fetch account metadata |
 | `getBalance(accountId)` | Derived liquid balance via snapshots: `Snapshot + Σ entries − Σ pending active holds` |
 | `getJournals(accountId, opts)` | Paginated, hydrated transaction history |
+| `stageIntent(payload)` | Store a validated mutation intent for human approval (Agent Authorization Profile) |
+| `executeIntent(intentId)` | Execute a PENDING staged intent after human approval |
+| `rejectIntent(intentId)` | Reject a PENDING staged intent without execution |
+| `getPendingIntents()` | List all PENDING staged intents awaiting human review |
+| `setKontoLogger(logger)` | Inject a structured logger (pino, winston, console). No-op by default. |
 
 ---
 
