@@ -1,0 +1,122 @@
+## About
+
+Konto is a high-performance, strictly-typed, double-entry accounting ledger system built on PostgreSQL. It ensures financial correctness with a robust core engine and supports integration with autonomous agents.
+
+## Built With
+
+*   **TypeScript:** For robust, type-safe development across the monorepo.
+*   **PostgreSQL:** The foundation for the double-entry accounting ledger, ensuring data integrity.
+*   **pnpm:** Efficient package management for the monorepo.
+*   **Turborepo:** High-performance build system for monorepo optimization.
+
+## Getting Started
+
+### Prerequisites
+
+*   **pnpm:** Ensure you have pnpm installed globally.
+*   **Node.js:** Version 18 or higher is recommended.
+*   **PostgreSQL:** Version 16+ is required for running applications.
+
+### Installation
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/konto.git
+    cd konto
+    ```
+2.  **Install dependencies:**
+    ```bash
+    pnpm install
+    ```
+    This command installs all dependencies across the monorepo using pnpm.
+
+### Initialize and Migrate Database
+
+To set up the database schema for applications like `mcp-server`:
+
+1.  **Initialize the schema:**
+    ```bash
+    npx @konto/cli init
+    ```
+2.  **Run migrations:**
+    ```bash
+    npx @konto/cli migrate
+    ```
+    These commands prepare your PostgreSQL instance for Konto.
+
+## Usage
+
+Interact with the Konto ledger through its core library, CLI tools, or the MCP server for agent integration.
+
+### Core Library
+
+Import and use Konto's ledger engine directly in your JavaScript/TypeScript applications. Define your ledger schema and execute transactions programmatically.
+
+### CLI Tools
+
+Manage your ledger from the command line. Use commands to create accounts, post transactions, and query ledger state.
+
+### MCP Server
+
+Expose the Konto ledger to autonomous agents via the Model Context Protocol. This headless server allows LLM agents to interact with your financial data through a standard interface.
+
+## Architecture
+
+*   **Monorepo Structure:** Organizes independent packages and applications using pnpm and Turborepo.
+*   **Core Engine (`packages/core`):** The heart of Konto, responsible for ledger logic, transfers, holds, and schema enforcement.
+*   **Applications (`apps/`):** House distinct functionalities like the MCP server for autonomous agents and the Stripe webhook integration.
+*   **Tooling (`packages/cli`, `packages/types`, `packages/adapters`):** Provides utilities for database interaction, client generation, and adapter implementations.
+
+# Contributing
+
+We welcome contributions to the Konto project! Please follow these guidelines to help us maintain a high-quality and secure codebase.
+
+## Reporting Bugs
+
+*   **Security Vulnerabilities:** Report any security issues by emailing `security@konto.dev` or by opening a private vulnerability report through GitHub security advisories. We aim to respond within 72 hours.
+*   **General Bugs:** For non-security related bugs, please open an issue on the GitHub repository. Provide a clear description of the bug, steps to reproduce it, and any relevant environment details.
+
+## Submitting Pull Requests
+
+1.  **Fork the repository** and create a new branch for your feature or fix.
+2.  **Make your changes** and ensure they are well-tested.
+3.  **Submit a pull request** with a clear description of your changes.
+4.  We will review your PR and provide feedback.
+
+## Development Focus Areas
+
+We are actively looking for contributions in the following areas:
+
+*   **Frontend / Studio App:** Developing a graphical interface for viewing accounts, journals, and pending staged intents.
+*   **npm Publishing:** Publishing all packages (`@konto/core`, `@konto/cli`, `@konto/types`, `@konto/adapters`) to the npm registry.
+
+## License
+
+This project is licensed under the MIT License.
+
+*   **Permissions:** Use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the software.
+*   **Conditions:** Include the original copyright notice and permission notice in all copies or substantial portions of the software.
+
+See the [LICENSE](LICENSE) file for full details.
+
+## Roadmap
+
+This section outlines planned features and future development for Konto.
+
+### Studio Graphical Dashboard
+
+*   **Goal:** Develop a user-friendly graphical interface for managing financial data.
+*   **Features:**
+    *   Visualize accounts and journals.
+    *   Review and approve staged financial intents.
+    *   Provide an intuitive dashboard for monitoring ledger activity.
+
+### npm Package Publishing
+
+*   **Goal:** Make Konto's core libraries readily available for public use.
+*   **Action:** Publish `@konto/core`, `@konto/cli`, `@konto/types`, and `@konto/adapters` to the npm registry.
+*   **Benefit:** Enables easier integration and adoption of Konto in other projects.
+
+---
+
+*This README was generated by [DevDoq](https://devdoq.com)*
