@@ -36,6 +36,7 @@ export interface AccountOption {
 export function DirectTransferForm({ accounts }: { accounts: AccountOption[] }) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
   // Dynamic schema that validates cross-currency
   const formSchema = z
@@ -75,9 +76,6 @@ export function DirectTransferForm({ accounts }: { accounts: AccountOption[] }) 
   async function onSubmit(data: FormValues) {
     setIsSubmitting(true);
     try {
-      // Client-side idempotency generation
-      const idempotencyKey = crypto.randomUUID();
-
       const entries = [
         { accountId: data.senderId, amount: "-" + data.amount }, // Debit sender
         { accountId: data.receiverId, amount: data.amount },     // Credit receiver
@@ -88,6 +86,7 @@ export function DirectTransferForm({ accounts }: { accounts: AccountOption[] }) 
       if (res.success) {
         toast.success("Transfer executed successfully.");
         form.reset();
+        setIdempotencyKey(crypto.randomUUID()); // Reset key for next transfer ONLY on success
         router.refresh();
       } else {
         toast.error("Transfer failed", { description: res.error });
