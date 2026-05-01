@@ -9,6 +9,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { CreateAccountForm } from "@/components/forms/create-account-form";
 
 export const dynamic = "force-dynamic";
 
@@ -61,9 +71,28 @@ export default async function AccountsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Accounts</h1>
-        <Badge variant="outline" className="font-mono">{accounts.length} Total</Badge>
+      <div className="flex items-end justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-primary uppercase">Accounts</h1>
+          <p className="text-muted-foreground mt-1">
+            Real-time liquid balance visualization derived natively from Postgres via LATERAL JOINs.
+          </p>
+        </div>
+        
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button>New Account</Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Create Account</DialogTitle>
+              <DialogDescription>
+                Add a new account to the ledger. Natively supports multi-currency and account types.
+              </DialogDescription>
+            </DialogHeader>
+            <CreateAccountForm />
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="border rounded-md">

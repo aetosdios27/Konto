@@ -28,9 +28,10 @@ export default function RootLayout({
           <div className="container flex h-14 items-center gap-6 px-4 max-w-6xl mx-auto">
             <a href="/" className="font-bold text-primary tracking-tight">KONTO_STUDIO</a>
             <nav className="flex gap-4 text-sm font-medium text-muted-foreground">
-              <a href="/" className="hover:text-foreground transition-colors">Accounts</a>
-              <a href="/intents" className="hover:text-foreground transition-colors">Intents</a>
-              <a href="/holds" className="hover:text-foreground transition-colors">Holds</a>
+                <a href="/" className="text-sm font-medium hover:text-[#00FF41] transition-colors">Accounts</a>
+                <a href="/transfers" className="text-sm font-medium hover:text-[#00FF41] transition-colors">Transfers</a>
+                <a href="/intents" className="text-sm font-medium hover:text-[#00FF41] transition-colors">Intents</a>
+                <a href="/holds" className="text-sm font-medium hover:text-[#00FF41] transition-colors">Holds</a>
             </nav>
           </div>
         </header>
