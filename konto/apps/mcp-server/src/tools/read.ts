@@ -63,9 +63,11 @@ export async function kontoGetJournals(
   sql: KontoQueryExecutor,
   accountId: string,
   limit?: number,
+  cursorId?: string,
 ) {
   const journals = await getJournals(sql, accountId, {
     limit: limit ?? 25,
+    cursorId,
   });
 
   return {
@@ -90,6 +92,7 @@ export async function kontoListAccounts(
   sql: KontoQueryExecutor,
   currency?: string,
   accountType?: string,
+  cursorId?: string,
 ) {
   const rows = await (sql as any)`
     SELECT id, name, currency, account_type, metadata, created_at
@@ -97,7 +100,8 @@ export async function kontoListAccounts(
     WHERE 1=1
       ${currency ? (sql as any)`AND currency = ${currency}` : (sql as any)``}
       ${accountType ? (sql as any)`AND account_type = ${accountType}` : (sql as any)``}
-    ORDER BY created_at DESC
+      ${cursorId ? (sql as any)`AND id < ${cursorId}` : (sql as any)``}
+    ORDER BY id DESC
     LIMIT 100
   `;
 
@@ -118,6 +122,7 @@ export async function kontoListAccounts(
 export async function kontoListActiveHolds(
   sql: KontoQueryExecutor,
   accountId?: string,
+  cursorId?: string,
 ) {
   const rows = await (sql as any)`
     SELECT
@@ -133,7 +138,8 @@ export async function kontoListActiveHolds(
     WHERE h.status = 'PENDING'
       AND (h.expires_at IS NULL OR NOW() <= h.expires_at)
       ${accountId ? (sql as any)`AND h.account_id = ${accountId}` : (sql as any)``}
-    ORDER BY h.created_at DESC
+      ${cursorId ? (sql as any)`AND h.id < ${cursorId}` : (sql as any)``}
+    ORDER BY h.id DESC
     LIMIT 100
   `;
 

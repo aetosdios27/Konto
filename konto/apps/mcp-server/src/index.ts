@@ -45,11 +45,13 @@ server.tool(
   {
     accountId: z.string().uuid().describe("The UUID of the account to query."),
   },
+  { readOnlyHint: true },
   async ({ accountId }) => {
     try {
       const result = await kontoGetBalance(sql as any, accountId);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result,
       };
     } catch (err: any) {
       console.error(`[konto-mcp] konto_get_balance error:`, err.message);
@@ -78,12 +80,19 @@ server.tool(
       .max(100)
       .optional()
       .describe("Maximum number of journals to return. Default 25, max 100."),
+    cursorId: z
+      .string()
+      .uuid()
+      .optional()
+      .describe("Optional journal UUID to paginate after."),
   },
-  async ({ accountId, limit }) => {
+  { readOnlyHint: true },
+  async ({ accountId, limit, cursorId }) => {
     try {
-      const result = await kontoGetJournals(sql as any, accountId, limit);
+      const result = await kontoGetJournals(sql as any, accountId, limit, cursorId);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result,
       };
     } catch (err: any) {
       console.error(`[konto-mcp] konto_get_journals error:`, err.message);
@@ -110,12 +119,19 @@ server.tool(
       .enum(["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"])
       .optional()
       .describe("Account type to filter by."),
+    cursorId: z
+      .string()
+      .uuid()
+      .optional()
+      .describe("Optional account UUID to paginate after."),
   },
-  async ({ currency, account_type }) => {
+  { readOnlyHint: true },
+  async ({ currency, account_type, cursorId }) => {
     try {
-      const result = await kontoListAccounts(sql as any, currency, account_type);
+      const result = await kontoListAccounts(sql as any, currency, account_type, cursorId);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result,
       };
     } catch (err: any) {
       console.error(`[konto-mcp] konto_list_accounts error:`, err.message);
@@ -140,12 +156,19 @@ server.tool(
       .describe(
         "Optional account UUID to filter holds. If omitted, returns all active holds.",
       ),
+    cursorId: z
+      .string()
+      .uuid()
+      .optional()
+      .describe("Optional hold UUID to paginate after."),
   },
-  async ({ accountId }) => {
+  { readOnlyHint: true },
+  async ({ accountId, cursorId }) => {
     try {
-      const result = await kontoListActiveHolds(sql as any, accountId);
+      const result = await kontoListActiveHolds(sql as any, accountId, cursorId);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        structuredContent: result,
       };
     } catch (err: any) {
       console.error(
@@ -196,6 +219,7 @@ server.tool(
       .optional()
       .describe("Optional structured metadata for the journal entry."),
   },
+  { idempotentHint: true },
   async ({ accountId, entries, metadata }) => {
     try {
       const intent = await kontoTransferStaged(sql as any, {
@@ -205,6 +229,7 @@ server.tool(
       });
       return {
         content: [{ type: "text", text: JSON.stringify(intent, null, 2) }],
+        structuredContent: intent,
       };
     } catch (err: any) {
       console.error(`[konto-mcp] konto_transfer error:`, err.message);
@@ -231,6 +256,7 @@ server.tool(
       .optional()
       .describe("Optional metadata for the resulting journal entry."),
   },
+  { idempotentHint: true },
   async ({ holdId, metadata }) => {
     try {
       const intent = await kontoCommitHoldStaged(sql as any, {
@@ -239,6 +265,7 @@ server.tool(
       });
       return {
         content: [{ type: "text", text: JSON.stringify(intent, null, 2) }],
+        structuredContent: intent,
       };
     } catch (err: any) {
       console.error(`[konto-mcp] konto_commit_hold error:`, err.message);
@@ -261,11 +288,13 @@ server.tool(
       .uuid()
       .describe("The UUID of the PENDING hold to roll back."),
   },
+  { idempotentHint: true },
   async ({ holdId }) => {
     try {
       const intent = await kontoRollbackHoldStaged(sql as any, { holdId });
       return {
         content: [{ type: "text", text: JSON.stringify(intent, null, 2) }],
+        structuredContent: intent,
       };
     } catch (err: any) {
       console.error(`[konto-mcp] konto_rollback_hold error:`, err.message);
