@@ -6,12 +6,20 @@
  * stageIntent()   → Inserts a validated intent into konto_staged_intents.
  * executeIntent() → Reads a PENDING intent, executes the mutation, marks EXECUTED.
  * rejectIntent()  → Marks a PENDING intent as REJECTED without execution.
- * getPendingIntents() → Lists all PENDING intents for human review.
+ * getPendingIntents() → Lists all PENDING, non-expired intents for human review.
  */
 
 import type { KontoQueryExecutor } from "@konto/types";
 import { transfer } from "./transfer";
 import { commitHold, rollbackHold } from "./hold";
+
+// ── Constants ──────────────────────────────────────────────────────────────
+
+/** Default intent TTL: 24 hours. */
+const DEFAULT_INTENT_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Maximum intent TTL: 7 days. */
+const MAX_INTENT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -23,12 +31,15 @@ export interface StagedIntentRecord {
   status: string;
   createdAt: Date;
   executedAt: Date | null;
+  expiresAt: Date | null;
 }
 
 export interface StageIntentPayload {
   intentType: "TRANSFER" | "COMMIT_HOLD" | "ROLLBACK_HOLD";
   idempotencyKey?: string;
   payload: Record<string, unknown>;
+  /** Time-to-live in milliseconds. Default: 24h. Max: 7 days. */
+  ttlMs?: number;
 }
 
 // ── stageIntent ────────────────────────────────────────────────────────────
@@ -36,13 +47,26 @@ export interface StageIntentPayload {
 export async function stageIntent(
   sql: KontoQueryExecutor,
   input: StageIntentPayload,
-): Promise<{ intentId: string }> {
+): Promise<{ intentId: string; expiresAt: string }> {
+  const ttl = input.ttlMs ?? DEFAULT_INTENT_TTL_MS;
+  if (ttl > MAX_INTENT_TTL_MS) {
+    throw new Error(
+      `konto: intent TTL ${ttl}ms exceeds maximum of ${MAX_INTENT_TTL_MS}ms (7 days).`,
+    );
+  }
+  if (ttl <= 0) {
+    throw new Error("konto: intent TTL must be positive.");
+  }
+
+  const expiresAt = new Date(Date.now() + ttl);
+
   const rows = await sql<{ id: string }[]>`
-    INSERT INTO konto_staged_intents (intent_type, idempotency_key, payload)
+    INSERT INTO konto_staged_intents (intent_type, idempotency_key, payload, expires_at)
     VALUES (
       ${input.intentType},
       ${input.idempotencyKey ?? null},
-      ${sql.json(input.payload)}
+      ${sql.json(input.payload)},
+      ${expiresAt}
     )
     RETURNING id
   `;
@@ -50,7 +74,7 @@ export async function stageIntent(
   const row = rows[0];
   if (!row) throw new Error("konto: staged intent insert returned no rows");
 
-  return { intentId: row.id };
+  return { intentId: row.id, expiresAt: expiresAt.toISOString() };
 }
 
 // ── executeIntent ──────────────────────────────────────────────────────────
@@ -66,8 +90,9 @@ export async function executeIntent(
       intent_type: string;
       payload: Record<string, unknown>;
       status: string;
+      expires_at: Date | null;
     }[]>`
-      SELECT id, intent_type, payload, status
+      SELECT id, intent_type, payload, status, expires_at
       FROM konto_staged_intents
       WHERE id = ${intentId}
       FOR UPDATE
@@ -78,6 +103,23 @@ export async function executeIntent(
     }
 
     const intent = intentRows[0]!;
+
+    // Check expiration before status — an expired PENDING intent should be
+    // transitioned to EXPIRED, not treated as a normal PENDING.
+    if (
+      intent.status === "PENDING" &&
+      intent.expires_at &&
+      new Date() > intent.expires_at
+    ) {
+      await tx`
+        UPDATE konto_staged_intents
+        SET status = 'EXPIRED'
+        WHERE id = ${intentId}
+      `;
+      throw new Error(
+        `konto: staged intent ${intentId} has expired (expired at ${intent.expires_at.toISOString()}).`,
+      );
+    }
 
     if (intent.status !== "PENDING") {
       throw new Error(
@@ -152,13 +194,15 @@ export async function rejectIntent(
   const rows = await sql<{ id: string }[]>`
     UPDATE konto_staged_intents
     SET status = 'REJECTED'
-    WHERE id = ${intentId} AND status = 'PENDING'
+    WHERE id = ${intentId}
+      AND status = 'PENDING'
+      AND (expires_at IS NULL OR NOW() <= expires_at)
     RETURNING id
   `;
 
   if (rows.length === 0) {
     throw new Error(
-      `konto: staged intent ${intentId} not found or not in PENDING state.`,
+      `konto: staged intent ${intentId} not found, not PENDING, or has expired.`,
     );
   }
 
@@ -170,8 +214,17 @@ export async function rejectIntent(
 export async function getPendingIntents(
   sql: KontoQueryExecutor,
 ): Promise<StagedIntentRecord[]> {
+  // Auto-expire stale intents before returning the list
+  await sql`
+    UPDATE konto_staged_intents
+    SET status = 'EXPIRED'
+    WHERE status = 'PENDING'
+      AND expires_at IS NOT NULL
+      AND NOW() > expires_at
+  `;
+
   const rows = await sql<any[]>`
-    SELECT id, intent_type, idempotency_key, payload, status, created_at, executed_at
+    SELECT id, intent_type, idempotency_key, payload, status, created_at, executed_at, expires_at
     FROM konto_staged_intents
     WHERE status = 'PENDING'
     ORDER BY created_at ASC
@@ -185,5 +238,6 @@ export async function getPendingIntents(
     status: r.status,
     createdAt: r.created_at,
     executedAt: r.executed_at,
+    expiresAt: r.expires_at,
   }));
 }

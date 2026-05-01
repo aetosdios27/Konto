@@ -27,6 +27,8 @@ export interface StagedIntent {
   intentId: string;
   /** ISO 8601 timestamp of when this intent was staged */
   stagedAt: string;
+  /** ISO 8601 timestamp of when this intent expires */
+  expiresAt: string;
   /** The mutation type that would be executed */
   mutationType: "TRANSFER" | "COMMIT_HOLD" | "ROLLBACK_HOLD";
   /** Deterministic idempotency key for replay protection */
@@ -100,7 +102,7 @@ export async function kontoTransferStaged(
   const serialized = serializeBigIntsInPayload(payload) as Record<string, unknown>;
 
   // Persist the intent to konto_staged_intents
-  const { intentId } = await stageIntent(sql, {
+  const { intentId, expiresAt } = await stageIntent(sql, {
     intentType: "TRANSFER",
     idempotencyKey,
     payload: serialized,
@@ -117,13 +119,16 @@ export async function kontoTransferStaged(
   return {
     intentId,
     stagedAt: new Date().toISOString(),
+    expiresAt,
     mutationType: "TRANSFER",
     idempotencyKey,
     payload: serialized,
     summary: `Transfer with ${entriesWithBigInt.length} legs:\n${legs}`,
     status: "PENDING_HUMAN_APPROVAL",
     instruction:
-      "Intent persisted to konto_staged_intents. Run `npx @konto/cli approve " +
+      "Intent persisted to konto_staged_intents (expires: " +
+      expiresAt +
+      "). Run `npx @konto/cli approve " +
       intentId +
       "` to review and execute.",
   };
@@ -169,7 +174,7 @@ export async function kontoCommitHoldStaged(
   };
 
   // Persist the intent to konto_staged_intents
-  const { intentId } = await stageIntent(sql, {
+  const { intentId, expiresAt } = await stageIntent(sql, {
     intentType: "COMMIT_HOLD",
     idempotencyKey,
     payload: intentPayload,
@@ -178,13 +183,16 @@ export async function kontoCommitHoldStaged(
   return {
     intentId,
     stagedAt: new Date().toISOString(),
+    expiresAt,
     mutationType: "COMMIT_HOLD",
     idempotencyKey,
     payload: intentPayload,
     summary: `Commit hold ${params.holdId}: ${hold.amount} from ${hold.account_id} → ${hold.recipient_id}`,
     status: "PENDING_HUMAN_APPROVAL",
     instruction:
-      "Intent persisted to konto_staged_intents. Run `npx @konto/cli approve " +
+      "Intent persisted to konto_staged_intents (expires: " +
+      expiresAt +
+      "). Run `npx @konto/cli approve " +
       intentId +
       "` to review and execute.",
   };
@@ -228,7 +236,7 @@ export async function kontoRollbackHoldStaged(
   };
 
   // Persist the intent to konto_staged_intents
-  const { intentId } = await stageIntent(sql, {
+  const { intentId, expiresAt } = await stageIntent(sql, {
     intentType: "ROLLBACK_HOLD",
     idempotencyKey,
     payload: intentPayload,
@@ -237,13 +245,16 @@ export async function kontoRollbackHoldStaged(
   return {
     intentId,
     stagedAt: new Date().toISOString(),
+    expiresAt,
     mutationType: "ROLLBACK_HOLD",
     idempotencyKey,
     payload: intentPayload,
     summary: `Rollback hold ${params.holdId}: release ${hold.amount} back to ${hold.account_id}`,
     status: "PENDING_HUMAN_APPROVAL",
     instruction:
-      "Intent persisted to konto_staged_intents. Run `npx @konto/cli approve " +
+      "Intent persisted to konto_staged_intents (expires: " +
+      expiresAt +
+      "). Run `npx @konto/cli approve " +
       intentId +
       "` to review and execute.",
   };

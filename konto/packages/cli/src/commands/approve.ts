@@ -38,8 +38,9 @@ export async function approveCommand(intentId: string) {
       payload: any;
       status: string;
       created_at: Date;
+      expires_at: Date | null;
     }[]>`
-      SELECT id, intent_type, idempotency_key, payload, status, created_at
+      SELECT id, intent_type, idempotency_key, payload, status, created_at, expires_at
       FROM konto_staged_intents
       WHERE id = ${intentId}
     `;
@@ -50,6 +51,23 @@ export async function approveCommand(intentId: string) {
     }
 
     const intent = rows[0]!;
+
+    // Check if expired
+    if (
+      intent.status === "PENDING" &&
+      intent.expires_at &&
+      new Date() > intent.expires_at
+    ) {
+      await sql`
+        UPDATE konto_staged_intents
+        SET status = 'EXPIRED'
+        WHERE id = ${intentId}
+      `;
+      log.error(
+        `Intent ${intentId} has expired (expired at ${intent.expires_at.toISOString()}).`,
+      );
+      process.exit(1);
+    }
 
     if (intent.status !== "PENDING") {
       log.error(
@@ -63,6 +81,11 @@ export async function approveCommand(intentId: string) {
     log.message(`  ${pc.dim("ID:")}           ${intent.id}`);
     log.message(`  ${pc.dim("Type:")}         ${pc.bold(intent.intent_type)}`);
     log.message(`  ${pc.dim("Created:")}      ${intent.created_at.toISOString()}`);
+    if (intent.expires_at) {
+      const remaining = intent.expires_at.getTime() - Date.now();
+      const hoursLeft = Math.max(0, Math.round(remaining / (1000 * 60 * 60) * 10) / 10);
+      log.message(`  ${pc.dim("Expires:")}      ${intent.expires_at.toISOString()} ${pc.yellow(`(${hoursLeft}h remaining)`)}`);
+    }
     if (intent.idempotency_key) {
       log.message(`  ${pc.dim("Idempotency:")}  ${intent.idempotency_key}`);
     }

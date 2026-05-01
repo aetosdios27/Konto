@@ -118,7 +118,8 @@ CREATE TABLE IF NOT EXISTS konto_staged_intents (
   payload         JSONB NOT NULL,
   status          TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'EXECUTED', 'REJECTED', 'EXPIRED')),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  executed_at     TIMESTAMPTZ
+  executed_at     TIMESTAMPTZ,
+  expires_at      TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_staged_intents_status

@@ -319,7 +319,8 @@ CREATE TABLE konto_staged_intents (
   payload         JSONB NOT NULL,
   status          TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'EXECUTED', 'REJECTED', 'EXPIRED')),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  executed_at     TIMESTAMPTZ
+  executed_at     TIMESTAMPTZ,
+  expires_at      TIMESTAMPTZ
 );
 ```
 
@@ -328,6 +329,7 @@ CREATE TABLE konto_staged_intents (
 - **Human approval loop** — A human operator reviews the intent via `npx @konto/cli approve <intent_id>`, which displays the financial impact, prompts for confirmation, and only then calls `executeIntent()` to execute the stored payload. The MCP server's response includes the exact CLI command in its `instruction` field.
 - **Terminal states** — Intents transition to `EXECUTED` (approved and run), `REJECTED` (denied by operator), or `EXPIRED` (TTL exceeded). All states are immutable once set.
 - **Idempotency** — Each intent carries a `UNIQUE` idempotency key (prefixed `mcp-`) to prevent duplicate staging from agent retries.
+- **TTL Expiration** — Every intent is created with an `expires_at` timestamp (default: 24 hours, max: 7 days). Expired intents are automatically transitioned to `EXPIRED` on access — both when `executeIntent()` is called and when `getPendingIntents()` lists pending intents. The CLI `approve` command also checks expiration and shows remaining time. This prevents stale, unapproved intents from accumulating as financial state debt.
 
 ### End-to-End Pipeline
 
