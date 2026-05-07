@@ -116,7 +116,7 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
 
         if (isTransfer) {
             promises.push(
-                transfer(sql, {
+                transfer(sql as any, {
                     accountId: a,
                     entries: [
                         { accountId: a, amount: -amount },
@@ -128,7 +128,7 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
             );
         } else {
             promises.push(
-                hold(sql, {
+                hold(sql as any, {
                     accountId: a,
                     recipientId: b,
                     amount: amount
@@ -149,9 +149,9 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
     for(const holdId of holdIdsToResolve) {
         const isCommit = Math.random() < 0.5;
         if(isCommit) {
-            resolvePromises.push(commitHold(sql, holdId).catch(e => { throw e; }));
+            resolvePromises.push(commitHold(sql as any, holdId).catch(e => { throw e; }));
         } else {
-            resolvePromises.push(rollbackHold(sql, holdId).catch(e => { throw e; }));
+            resolvePromises.push(rollbackHold(sql as any, holdId).catch(e => { throw e; }));
         }
     }
 
@@ -177,19 +177,19 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
   it("committed hold no longer reduces available balance after settlement", async () => {
     const { alice, bob } = await createFundedAccounts(1000n);
 
-    const { holdId } = await hold(sql, {
+    const { holdId } = await hold(sql as any, {
       accountId: alice,
       recipientId: bob,
       amount: 300n,
     });
 
-    const pendingBalance = await getBalance(sql, alice);
+    const pendingBalance = await getBalance(sql as any, alice);
     expect(pendingBalance.balance).toBe(700n);
 
-    await commitHold(sql, holdId);
+    await commitHold(sql as any, holdId);
 
-    const settledAlice = await getBalance(sql, alice);
-    const settledBob = await getBalance(sql, bob);
+    const settledAlice = await getBalance(sql as any, alice);
+    const settledBob = await getBalance(sql as any, bob);
 
     expect(settledAlice.balance).toBe(700n);
     expect(settledBob.balance).toBe(300n);
@@ -198,19 +198,19 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
   it("rolled-back hold no longer reduces available balance after release", async () => {
     const { alice, bob } = await createFundedAccounts(1000n);
 
-    const { holdId } = await hold(sql, {
+    const { holdId } = await hold(sql as any, {
       accountId: alice,
       recipientId: bob,
       amount: 250n,
     });
 
-    const pendingBalance = await getBalance(sql, alice);
+    const pendingBalance = await getBalance(sql as any, alice);
     expect(pendingBalance.balance).toBe(750n);
 
-    await rollbackHold(sql, holdId);
+    await rollbackHold(sql as any, holdId);
 
-    const restoredAlice = await getBalance(sql, alice);
-    const restoredBob = await getBalance(sql, bob);
+    const restoredAlice = await getBalance(sql as any, alice);
+    const restoredBob = await getBalance(sql as any, bob);
 
     expect(restoredAlice.balance).toBe(1000n);
     expect(restoredBob.balance).toBe(0n);
@@ -219,7 +219,7 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
   it("NULL-expiry committed hold does not freeze funds indefinitely", async () => {
     const { alice, bob } = await createFundedAccounts(1000n);
 
-    const { holdId } = await hold(sql, {
+    const { holdId } = await hold(sql as any, {
       accountId: alice,
       recipientId: bob,
       amount: 400n,
@@ -232,10 +232,10 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
     `;
     expect(expiresAt).toBeNull();
 
-    await commitHold(sql, holdId);
+    await commitHold(sql as any, holdId);
 
-    const settledAlice = await getBalance(sql, alice);
-    const settledBob = await getBalance(sql, bob);
+    const settledAlice = await getBalance(sql as any, alice);
+    const settledBob = await getBalance(sql as any, bob);
 
     expect(settledAlice.balance).toBe(600n);
     expect(settledBob.balance).toBe(400n);
@@ -244,7 +244,7 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
   it("NULL-expiry rolled-back hold does not freeze funds indefinitely", async () => {
     const { alice, bob } = await createFundedAccounts(1000n);
 
-    const { holdId } = await hold(sql, {
+    const { holdId } = await hold(sql as any, {
       accountId: alice,
       recipientId: bob,
       amount: 400n,
@@ -257,10 +257,10 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
     `;
     expect(expiresAt).toBeNull();
 
-    await rollbackHold(sql, holdId);
+    await rollbackHold(sql as any, holdId);
 
-    const restoredAlice = await getBalance(sql, alice);
-    const restoredBob = await getBalance(sql, bob);
+    const restoredAlice = await getBalance(sql as any, alice);
+    const restoredBob = await getBalance(sql as any, bob);
 
     expect(restoredAlice.balance).toBe(1000n);
     expect(restoredBob.balance).toBe(0n);

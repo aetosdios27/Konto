@@ -229,7 +229,7 @@ server.tool(
       });
       return {
         content: [{ type: "text", text: JSON.stringify(intent, null, 2) }],
-        structuredContent: intent,
+        structuredContent: intent as any,
       };
     } catch (err: any) {
       console.error(`[konto-mcp] konto_transfer error:`, err.message);
@@ -265,7 +265,7 @@ server.tool(
       });
       return {
         content: [{ type: "text", text: JSON.stringify(intent, null, 2) }],
-        structuredContent: intent,
+        structuredContent: intent as any,
       };
     } catch (err: any) {
       console.error(`[konto-mcp] konto_commit_hold error:`, err.message);
@@ -294,7 +294,7 @@ server.tool(
       const intent = await kontoRollbackHoldStaged(sql as any, { holdId });
       return {
         content: [{ type: "text", text: JSON.stringify(intent, null, 2) }],
-        structuredContent: intent,
+        structuredContent: intent as any,
       };
     } catch (err: any) {
       console.error(`[konto-mcp] konto_rollback_hold error:`, err.message);

@@ -62,7 +62,7 @@ describe("Konto Core Engine", () => {
   it("should successfully execute a valid zero-sum transfer", async () => {
     const { a, b } = await setupAccounts(1000n);
 
-    const { journalId } = await transfer(sql, {
+    const { journalId } = await transfer(sql as any, {
       accountId: a,
       entries: [
         { accountId: a, amount: -300n },
@@ -86,7 +86,7 @@ describe("Konto Core Engine", () => {
     const { a, b } = await setupAccounts(500n);
 
     await expect(
-      transfer(sql, {
+      transfer(sql as any, {
         accountId: a,
         entries: [
           { accountId: a, amount: -600n },
@@ -104,7 +104,7 @@ describe("Konto Core Engine", () => {
     const { a, b } = await setupAccounts(1000n);
 
     await expect(
-      transfer(sql, {
+      transfer(sql as any, {
         accountId: a,
         entries: [
           { accountId: a, amount: -100n },
@@ -118,7 +118,7 @@ describe("Konto Core Engine", () => {
     const { a, b } = await setupAccounts(1000n);
     const key = `idemp-${Date.now()}`;
 
-    await transfer(sql, {
+    await transfer(sql as any, {
       accountId: a,
       idempotencyKey: key,
       entries: [
@@ -128,7 +128,7 @@ describe("Konto Core Engine", () => {
     });
 
     await expect(
-      transfer(sql, {
+      transfer(sql as any, {
         accountId: a,
         idempotencyKey: key,
         entries: [
@@ -143,7 +143,7 @@ describe("Konto Core Engine", () => {
     const { a, b } = await setupAccounts(100n);
 
     await expect(
-      transfer(sql, {
+      transfer(sql as any, {
         accountId: a,
         entries: [
           { accountId: a, amount: 0n },
@@ -157,7 +157,7 @@ describe("Konto Core Engine", () => {
     const { a } = await setupAccounts(100n);
 
     await expect(
-      transfer(sql, {
+      transfer(sql as any, {
         accountId: a,
         entries: [
           { accountId: a, amount: -50n },
@@ -172,7 +172,7 @@ describe("Konto Core Engine", () => {
     const CONCURRENCY = 50;
 
     const promises = Array.from({ length: CONCURRENCY }, (_, i) =>
-      transfer(sql, {
+      transfer(sql as any, {
         accountId: a,
         idempotencyKey: `ci-concurrent-${Date.now()}-${i}`,
         entries: [
