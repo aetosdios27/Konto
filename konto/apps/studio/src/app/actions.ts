@@ -29,13 +29,36 @@ export async function rejectStagedIntent(intentId: string) {
 
 // ── Direct Mutations (Studio Command Center) ───────────────────────────────
 
-export async function createAccountAction(name: string, currency: string, accountType: string) {
+export async function createAccountAction(name: string, currency: string, accountType: string, initialBalance?: string) {
   try {
     const id = randomUUID();
     await (sql as any)`
       INSERT INTO konto_accounts (id, name, currency, account_type)
       VALUES (${id}, ${name}, ${currency}, ${accountType})
     `;
+
+    if (initialBalance && /^\d+$/.test(initialBalance) && BigInt(initialBalance) > 0n) {
+      const GENESIS_ACCOUNT_NAME = `__konto_genesis_${currency.toUpperCase()}__`;
+      
+      const genesisId = randomUUID();
+      await (sql as any)`
+        INSERT INTO konto_accounts (id, name, currency, account_type)
+        VALUES (${genesisId}, ${GENESIS_ACCOUNT_NAME}, ${currency}, 'LIABILITY')
+        ON CONFLICT (name) DO NOTHING
+      `;
+
+      const genesisQuery = await (sql as any)`
+        SELECT id FROM konto_accounts WHERE name = ${GENESIS_ACCOUNT_NAME}
+      `;
+      const actualGenesisId = genesisQuery[0].id;
+
+      const entries = [
+        { accountId: actualGenesisId, amount: -BigInt(initialBalance) },
+        { accountId: id, amount: BigInt(initialBalance) }
+      ];
+      await transfer(sql as any, { entries, idempotencyKey: randomUUID() });
+    }
+
     revalidatePath("/");
     revalidatePath("/accounts");
     revalidatePath("/transfers");

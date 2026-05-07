@@ -30,6 +30,7 @@ const formSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters."),
   currency: z.string().length(3, "Currency must be exactly 3 uppercase letters (e.g. USD).").toUpperCase(),
   accountType: z.enum(["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"]),
+  initialBalance: z.string().regex(/^\d*$/, "Must be empty or a positive integer").optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -44,13 +45,14 @@ export function CreateAccountForm({ onSuccess }: { onSuccess?: () => void }) {
       name: "",
       currency: "USD",
       accountType: "ASSET",
+      initialBalance: "",
     },
   });
 
   async function onSubmit(data: FormValues) {
     setIsSubmitting(true);
     try {
-      const res = await createAccountAction(data.name, data.currency, data.accountType);
+      const res = await createAccountAction(data.name, data.currency, data.accountType, data.initialBalance);
       
       if (res.success) {
         toast.success(`Account ${data.name} created successfully.`);
@@ -116,6 +118,22 @@ export function CreateAccountForm({ onSuccess }: { onSuccess?: () => void }) {
                   <SelectItem value="EXPENSE">Expense (Debit Normal)</SelectItem>
                 </SelectContent>
               </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="initialBalance"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Initial Balance (optional)</FormLabel>
+              <FormControl>
+                <Input placeholder="e.g. 500 = $5.00" {...field} />
+              </FormControl>
+              <p className="text-sm text-muted-foreground mt-1">
+                Amount in minor units — e.g. 500 = $5.00
+              </p>
               <FormMessage />
             </FormItem>
           )}

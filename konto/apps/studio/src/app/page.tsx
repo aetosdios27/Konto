@@ -113,13 +113,15 @@ export default async function AccountsPage() {
               const holdsSum = BigInt(acc.holds_sum);
               const balance = snapshotBalance + entriesSum - holdsSum;
               const isNegative = balance < 0n;
+              const isGenesis = acc.name.startsWith("__konto_genesis_");
 
               return (
-                <TableRow key={acc.id}>
-                  <TableCell className="font-medium">
-                    <Link href={`/accounts/${acc.id}`} className="hover:underline">
-                      {acc.name}
+                <TableRow key={acc.id} className={isGenesis ? "opacity-60 bg-muted/10 pointer-events-none" : ""}>
+                  <TableCell className="font-medium flex items-center gap-2">
+                    <Link href={`/accounts/${acc.id}`} className={isGenesis ? "" : "hover:underline"}>
+                      {isGenesis ? "System Funding Source" : acc.name}
                     </Link>
+                    {isGenesis && <Badge variant="outline" className="text-[10px] uppercase h-5 px-1.5 text-muted-foreground border-muted-foreground">Genesis</Badge>}
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary" className="font-mono text-xs">
@@ -139,7 +141,7 @@ export default async function AccountsPage() {
             {accounts.length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                  No accounts found. Create one using the MCP Server.
+                  No accounts found. Use the Command Center to create one.
                 </TableCell>
               </TableRow>
             )}

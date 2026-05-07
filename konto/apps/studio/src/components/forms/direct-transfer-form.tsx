@@ -120,11 +120,14 @@ export function DirectTransferForm({ accounts }: { accounts: AccountOption[] }) 
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {accounts.map((acc) => (
-                    <SelectItem key={acc.id} value={acc.id} className="font-mono">
-                      {acc.name} ({acc.currency}) • Bal: {acc.availableBalance}
-                    </SelectItem>
-                  ))}
+                  {accounts.map((acc) => {
+                    const isGenesis = acc.name.startsWith("__konto_genesis_");
+                    return (
+                      <SelectItem key={acc.id} value={acc.id} className={`font-mono ${isGenesis ? "opacity-60 text-muted-foreground" : ""}`}>
+                        {isGenesis ? "SYSTEM_GENESIS" : acc.name} ({acc.currency}) • Bal: {acc.availableBalance}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -147,11 +150,14 @@ export function DirectTransferForm({ accounts }: { accounts: AccountOption[] }) 
                 <SelectContent>
                   {accounts
                     .filter((acc) => acc.id !== senderId && (!senderCurrency || acc.currency === senderCurrency))
-                    .map((acc) => (
-                      <SelectItem key={acc.id} value={acc.id} className="font-mono">
-                        {acc.name} ({acc.currency}) • Bal: {acc.availableBalance}
-                      </SelectItem>
-                    ))}
+                    .map((acc) => {
+                      const isGenesis = acc.name.startsWith("__konto_genesis_");
+                      return (
+                        <SelectItem key={acc.id} value={acc.id} className={`font-mono ${isGenesis ? "opacity-60 text-muted-foreground" : ""}`}>
+                          {isGenesis ? "SYSTEM_GENESIS" : acc.name} ({acc.currency}) • Bal: {acc.availableBalance}
+                        </SelectItem>
+                      );
+                    })}
                 </SelectContent>
               </Select>
               <FormMessage />
