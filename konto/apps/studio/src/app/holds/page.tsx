@@ -8,6 +8,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { HoldCountdown } from "@/components/ui/hold-countdown";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ export default async function HoldsPage() {
               <TableHead>Sender</TableHead>
               <TableHead>Recipient</TableHead>
               <TableHead className="text-right">Amount</TableHead>
-              <TableHead className="text-right">Created</TableHead>
+              <TableHead className="text-right">Expires In</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -99,7 +100,11 @@ export default async function HoldsPage() {
                     {hold.amount}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground text-sm">
-                    {hold.created_at.toISOString().split("T")[0]}
+                    {hold.status === "PENDING" ? (
+                      <HoldCountdown expiresAt={hold.expires_at ? hold.expires_at.toISOString() : null} />
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                 </TableRow>
               );
