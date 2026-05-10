@@ -4,7 +4,7 @@
     "outDir": "./dist",
     "baseUrl": ".",
     "paths": {
-      "@konto/*": ["../*"],
+      "@konto-ledger/*": ["../*"],
     },
   },
   "include": ["src/**/*"],

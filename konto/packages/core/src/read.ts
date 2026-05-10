@@ -1,4 +1,4 @@
-import type { KontoQueryExecutor } from "@konto/types";
+import type { KontoQueryExecutor } from "@konto-ledger/types";
 import { KontoAccountNotFoundError } from "./errors";
 
 // Task 1: Fetch Account

@@ -1,5 +1,5 @@
 /**
- * @konto/mcp-server — Entrypoint
+ * @konto-ledger/mcp-server — Entrypoint
  *
  * A headless, stdio-based MCP server for autonomous agent finance.
  * Communicates exclusively via stdin/stdout JSON-RPC.

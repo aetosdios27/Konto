@@ -1,4 +1,4 @@
-import type { KontoQueryExecutor } from "@konto/types";
+import type { KontoQueryExecutor } from "@konto-ledger/types";
 import { HoldPayloadSchema, jsonSchema } from "./schema";
 import { z } from "zod";
 import {

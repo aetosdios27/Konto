@@ -41,7 +41,7 @@ export async function initCommand() {
   const configPath = path.resolve(process.cwd(), "konto.config.ts");
   if (!fs.existsSync(configPath)) {
     log.info("Scaffolding konto.config.ts...");
-    fs.writeFileSync(configPath, `import { z } from "zod";\nimport { defineLedger } from "@konto/cli";\n\nexport default defineLedger({\n  transfer: z.object({\n    invoice_id: z.string(),\n  }),\n  hold: z.object({}),\n  journal: z.object({}),\n  account: z.object({}),\n});\n`);
+    fs.writeFileSync(configPath, `import { z } from "zod";\nimport { defineLedger } from "@konto-ledger/cli";\n\nexport default defineLedger({\n  transfer: z.object({\n    invoice_id: z.string(),\n  }),\n  hold: z.object({}),\n  journal: z.object({}),\n  account: z.object({}),\n});\n`);
   }
 
   const s = spinner();

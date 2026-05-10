@@ -25,7 +25,7 @@ This is not a theoretical problem. It is the #1 cause of financial discrepancies
 **Konto** is a zero-dependency, ACID-compliant, double-entry accounting engine that lives inside your PostgreSQL database. It replaces ad-hoc balance columns with an immutable, append-only ledger where every cent is accounted for, every movement is atomic, and every balance is derived — never stored.
 
 ```
-npm install @konto/core @konto/cli zod
+npm install @konto-ledger/core @konto-ledger/cli zod
 ```
 
 ---
@@ -46,7 +46,7 @@ No stale caches. No sync drift. The number is always correct and fetches run in 
 
 ### 3. Type-Safe SDK Compiler
 
-Define your business rules in a `konto.config.ts` file. Run `npx @konto/cli generate`. Get a custom TypeScript client where `transfer()` autocompletes your application-specific metadata fields — `invoice_id`, `order_ref`, `tax_class` — enforced at compile time.
+Define your business rules in a `konto.config.ts` file. Run `npx @konto-ledger/cli generate`. Get a custom TypeScript client where `transfer()` autocompletes your application-specific metadata fields — `invoice_id`, `order_ref`, `tax_class` — enforced at compile time.
 
 ---
 
@@ -55,7 +55,7 @@ Define your business rules in a `konto.config.ts` file. Run `npx @konto/cli gene
 ### Step 1: Initialize the Migration Crawler
 
 ```bash
-npx @konto/cli init
+npx @konto-ledger/cli init
 ```
 
 This connects to your Postgres instance, sets up the `_konto_migrations` tracking layer, and seamlessly applies the foundational `0001_initial_state.sql` schema required to boot the ledger framework.
@@ -66,7 +66,7 @@ Create a `konto.config.ts` in your project root:
 
 ```typescript
 import { z } from "zod";
-import { defineLedger } from "@konto/cli";
+import { defineLedger } from "@konto-ledger/cli";
 
 export default defineLedger({
   transfer: z.object({
@@ -86,11 +86,11 @@ export default defineLedger({
 ### Step 3: Generate the Typed Client
 
 ```bash
-npx @konto/cli generate
+npx @konto-ledger/cli generate
 ```
 
 This outputs a strictly-typed SDK to `node_modules/.konto` — instantly available across your entire project.
-Your application must depend on both `@konto/cli` and `zod`, because `konto.config.ts` imports them directly and the generator loads that file at runtime.
+Your application must depend on both `@konto-ledger/cli` and `zod`, because `konto.config.ts` imports them directly and the generator loads that file at runtime.
 
 ### Step 4: Move Money
 
@@ -119,7 +119,7 @@ That's it. Five lines to replace `UPDATE ... SET balance = balance + n` with a p
 
 ## Generated Client API
 
-The signatures below describe the generated `.konto` proxy. If you import directly from `@konto/core`, the raw functions still take an explicit database executor as their first argument.
+The signatures below describe the generated `.konto` proxy. If you import directly from `@konto-ledger/core`, the raw functions still take an explicit database executor as their first argument.
 
 | Function | Description |
 | --- | --- |
@@ -145,11 +145,11 @@ Konto decouples the ledger engine from any specific PostgreSQL driver via the `K
 ### Vercel Postgres
 
 ```bash
-npm install @konto/adapters @vercel/postgres
+npm install @konto-ledger/adapters @vercel/postgres
 ```
 
 ```typescript
-import { createVercelAdapter } from '@konto/adapters/vercel';
+import { createVercelAdapter } from '@konto-ledger/adapters/vercel';
 
 const konto = createVercelAdapter(process.env.POSTGRES_URL);
 ```
@@ -157,11 +157,11 @@ const konto = createVercelAdapter(process.env.POSTGRES_URL);
 ### Neon Serverless
 
 ```bash
-npm install @konto/adapters @neondatabase/serverless
+npm install @konto-ledger/adapters @neondatabase/serverless
 ```
 
 ```typescript
-import { createKontoClient } from '@konto/adapters/neon';
+import { createKontoClient } from '@konto-ledger/adapters/neon';
 import { neon } from '@neondatabase/serverless';
 
 const konto = createKontoClient(neon(process.env.DATABASE_URL));
@@ -180,7 +180,7 @@ const konto = createKontoClient(neon(process.env.DATABASE_URL));
 - **[Adapters](./docs/adapters.md)** — How the KontoQueryExecutor interface works, per-adapter usage, edge case handling, and peer dependency configuration.
 - **[Codebase Explanation](./docs/codebase_explanation.md)** — Full module-by-module status and implementation notes.
 - **[Konto Studio](./apps/studio/README.md)** — The brutalist command center dashboard: accounts, balances, transfers, escrow countdowns, and agent intent approval.
-- **[Stripe Ledger](./apps/stripe-ledger/README.md)** — Standalone sidecar that translates Stripe webhooks into double-entry journal entries via `@konto/core`.
+- **[Stripe Ledger](./apps/stripe-ledger/README.md)** — Standalone sidecar that translates Stripe webhooks into double-entry journal entries via `@konto-ledger/core`.
 - **[MCP Server](./apps/mcp-server/README.md)** — Headless, stdio-based machine endpoint for autonomous agent finance via the Model Context Protocol.
 
 ---

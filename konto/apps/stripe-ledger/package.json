@@ -1,5 +1,5 @@
 {
-  "name": "@konto/stripe-ledger",
+  "name": "@konto-ledger/stripe-ledger",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@konto/core": "workspace:*",
-    "@konto/adapters": "workspace:*",
+    "@konto-ledger/core": "workspace:*",
+    "@konto-ledger/adapters": "workspace:*",
     "dotenv": "^16.4.7",
     "fastify": "^5.3.3",
     "postgres": "^3.4.5",

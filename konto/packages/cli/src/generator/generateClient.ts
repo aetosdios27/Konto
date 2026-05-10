@@ -13,8 +13,8 @@ import {
   getBalance as coreGetBalance,
   getJournals as coreGetJournals,
   createAccount as coreCreateAccount
-} from "@konto/core";
-import type { TransferPayload, HoldPayload } from "@konto/core";
+} from "@konto-ledger/core";
+import type { TransferPayload, HoldPayload } from "@konto-ledger/core";
 import type postgres from "postgres";
 import type { z } from "zod";
 import type config from "../../konto.config";
@@ -58,7 +58,7 @@ import {
   getBalance as coreGetBalance, 
   getJournals as coreGetJournals,
   createAccount as coreCreateAccount
-} from "@konto/core";
+} from "@konto-ledger/core";
 import { createJiti } from "jiti";
 import path from "path";
 import postgres from "postgres";

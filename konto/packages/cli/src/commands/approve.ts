@@ -1,23 +1,23 @@
 /**
- * @konto/cli — approve command
+ * @konto-ledger/cli — approve command
  *
  * Fetches a staged intent from the database, displays the financial
  * impact in the terminal, prompts for human confirmation, and executes
- * the intent via @konto/core's executeIntent().
+ * the intent via @konto-ledger/core's executeIntent().
  *
- * Usage: npx @konto/cli approve <intent_id>
+ * Usage: npx @konto-ledger/cli approve <intent_id>
  */
 
 import { intro, outro, log, confirm, isCancel } from "@clack/prompts";
 import pc from "picocolors";
 import postgres from "postgres";
-import { executeIntent, rejectIntent } from "@konto/core";
+import { executeIntent, rejectIntent } from "@konto-ledger/core";
 
 export async function approveCommand(intentId: string) {
   intro(pc.bgBlack(pc.white(" KONTO APPROVE ")));
 
   if (!intentId) {
-    log.error("Missing intent ID. Usage: npx @konto/cli approve <intent_id>");
+    log.error("Missing intent ID. Usage: npx @konto-ledger/cli approve <intent_id>");
     process.exit(1);
   }
 

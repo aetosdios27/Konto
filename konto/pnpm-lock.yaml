@@ -8,10 +8,10 @@ importers:
 
   .:
     dependencies:
-      '@konto/cli':
+      '@konto-ledger/cli':
         specifier: workspace:^
         version: link:packages/cli
-      '@konto/core':
+      '@konto-ledger/core':
         specifier: workspace:^
         version: link:packages/core
       postgres:
@@ -76,10 +76,10 @@ importers:
 
   apps/mcp-server:
     dependencies:
-      '@konto/core':
+      '@konto-ledger/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@konto/types':
+      '@konto-ledger/types':
         specifier: workspace:*
         version: link:../../packages/types
       '@modelcontextprotocol/sdk':
@@ -101,10 +101,10 @@ importers:
 
   apps/stripe-ledger:
     dependencies:
-      '@konto/adapters':
+      '@konto-ledger/adapters':
         specifier: workspace:*
         version: link:../../packages/adapters
-      '@konto/core':
+      '@konto-ledger/core':
         specifier: workspace:*
         version: link:../../packages/core
       dotenv:
@@ -141,10 +141,10 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.74.0(react@19.2.4))
-      '@konto/core':
+      '@konto-ledger/core':
         specifier: workspace:^
         version: link:../../packages/core
-      '@konto/types':
+      '@konto-ledger/types':
         specifier: workspace:^
         version: link:../../packages/types
       '@radix-ui/react-alert-dialog':
@@ -232,7 +232,7 @@ importers:
 
   packages/adapters:
     dependencies:
-      '@konto/types':
+      '@konto-ledger/types':
         specifier: workspace:^
         version: link:../types
       '@neondatabase/serverless':
@@ -263,7 +263,7 @@ importers:
       '@clack/prompts':
         specifier: ^0.7.0
         version: 0.7.0
-      '@konto/types':
+      '@konto-ledger/types':
         specifier: workspace:^
         version: link:../types
       cac:
@@ -282,7 +282,7 @@ importers:
         specifier: ^3.4.5
         version: 3.4.9
     devDependencies:
-      '@konto/core':
+      '@konto-ledger/core':
         specifier: workspace:^
         version: link:../core
       '@testcontainers/postgresql':
@@ -309,7 +309,7 @@ importers:
 
   packages/core:
     dependencies:
-      '@konto/types':
+      '@konto-ledger/types':
         specifier: workspace:^
         version: link:../types
       zod:

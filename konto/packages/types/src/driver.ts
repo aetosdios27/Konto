@@ -20,8 +20,8 @@ export interface KontoQueryExecutor {
 
 /**
  * KontoLogger is a dependency-injected observability interface.
- * Inject via setKontoLogger() in @konto/core. If not injected,
- * all log calls are silently no-oped — @konto/core stays dependency-free.
+ * Inject via setKontoLogger() in @konto-ledger/core. If not injected,
+ * all log calls are silently no-oped — @konto-ledger/core stays dependency-free.
  *
  * Compatible with pino, winston, console, or any structured logger.
  */

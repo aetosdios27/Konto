@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { getBalance, getJournals } from "@konto/core";
+import { getBalance, getJournals } from "@konto-ledger/core";
 import { sql } from "../db.js";
 import { accounts } from "../bootstrap.js";
 

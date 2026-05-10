@@ -1,4 +1,4 @@
-import type { KontoQueryExecutor } from "@konto/types";
+import type { KontoQueryExecutor } from "@konto-ledger/types";
 import { TransferPayloadSchema } from "./schema";
 import {
   KontoInsufficientFundsError,

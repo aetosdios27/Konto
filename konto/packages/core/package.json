@@ -1,5 +1,5 @@
 {
-  "name": "@konto/core",
+  "name": "@konto-ledger/core",
   "version": "0.1.0",
   "description": "Strictly-typed double-entry ledger primitives for PostgreSQL.",
   "license": "MIT",
@@ -42,7 +42,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@konto/types": "workspace:^",
+    "@konto-ledger/types": "workspace:^",
     "zod": "^3.25.76"
   },
   "devDependencies": {

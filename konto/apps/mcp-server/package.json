@@ -1,5 +1,5 @@
 {
-  "name": "@konto/mcp-server",
+  "name": "@konto-ledger/mcp-server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "@konto/core": "workspace:*",
-    "@konto/types": "workspace:*",
+    "@konto-ledger/core": "workspace:*",
+    "@konto-ledger/types": "workspace:*",
     "postgres": "^3.4.9",
     "zod": "^3.24.3"
   },

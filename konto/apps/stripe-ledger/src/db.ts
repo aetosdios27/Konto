@@ -1,5 +1,5 @@
 import postgres from "postgres";
-import type { KontoQueryExecutor } from "@konto/types";
+import type { KontoQueryExecutor } from "@konto-ledger/types";
 import { config } from "./config.js";
 
 /**

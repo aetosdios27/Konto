@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import { KontoQueryExecutor } from "@konto/types";
+import { KontoQueryExecutor } from "@konto-ledger/types";
 
 export interface MigrateOptions {
   migrationsPath: string;

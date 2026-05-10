@@ -1,5 +1,5 @@
 {
-  "name": "@konto/adapters",
+  "name": "@konto-ledger/adapters",
   "version": "0.1.0",
   "description": "Provider-specific PostgreSQL adapters for Konto.",
   "license": "MIT",
@@ -53,7 +53,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@konto/types": "workspace:^"
+    "@konto-ledger/types": "workspace:^"
   },
   "peerDependencies": {
     "@neondatabase/serverless": "^1.1.0",

@@ -1,16 +1,16 @@
 /**
- * @konto/core — Logger Singleton
+ * @konto-ledger/core — Logger Singleton
  *
  * Dependency-injected observability. If no logger is set,
- * all calls are silently no-oped. @konto/core remains dependency-free.
+ * all calls are silently no-oped. @konto-ledger/core remains dependency-free.
  *
  * Usage:
- *   import { setKontoLogger } from '@konto/core';
+ *   import { setKontoLogger } from '@konto-ledger/core';
  *   import pino from 'pino';
  *   setKontoLogger(pino());
  */
 
-import type { KontoLogger } from "@konto/types";
+import type { KontoLogger } from "@konto-ledger/types";
 
 const noop = () => {};
 

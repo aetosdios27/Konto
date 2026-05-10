@@ -1,4 +1,4 @@
-# @konto/mcp-server
+# @konto-ledger/mcp-server
 
 **The headless financial endpoint for autonomous agents.**
 
@@ -107,7 +107,7 @@ The MCP protocol uses `stdout` as the JSON-RPC transport layer. Any `console.log
 ### Prerequisites
 
 - [Bun](https://bun.sh) ≥ 1.0
-- PostgreSQL 16+ with the Konto schema applied (`npx @konto/cli init && npx @konto/cli migrate`)
+- PostgreSQL 16+ with the Konto schema applied (`npx @konto-ledger/cli init && npx @konto-ledger/cli migrate`)
 
 ### Build
 
@@ -162,7 +162,7 @@ DATABASE_URL="postgres://..." npx @modelcontextprotocol/inspector bun run src/in
 | Package | Purpose |
 |---|---|
 | `@modelcontextprotocol/sdk` | MCP protocol server + stdio transport |
-| `@konto/core` (workspace) | Double-entry ledger engine |
-| `@konto/types` (workspace) | `KontoQueryExecutor` interface |
+| `@konto-ledger/core` (workspace) | Double-entry ledger engine |
+| `@konto-ledger/types` (workspace) | `KontoQueryExecutor` interface |
 | `postgres` | PostgreSQL driver |
 | `zod` | Runtime schema validation for tool inputs |

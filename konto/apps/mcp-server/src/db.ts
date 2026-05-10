@@ -1,5 +1,5 @@
 /**
- * @konto/mcp-server — Database Connection
+ * @konto-ledger/mcp-server — Database Connection
  *
  * Establishes a postgres.js connection pool from DATABASE_URL.
  * CRITICAL: All diagnostic output goes to stderr.

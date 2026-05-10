@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { defineLedger } from "@konto/cli";
+import { defineLedger } from "@konto-ledger/cli";
 
 export default defineLedger({
   transfer: z.object({

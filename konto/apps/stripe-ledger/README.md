@@ -1,6 +1,6 @@
-# @konto/stripe-ledger
+# @konto-ledger/stripe-ledger
 
-A standalone Fastify sidecar service that listens to Stripe webhooks, cryptographically verifies their signatures, and translates Stripe financial events into mathematically correct double-entry journal entries using `@konto/core`.
+A standalone Fastify sidecar service that listens to Stripe webhooks, cryptographically verifies their signatures, and translates Stripe financial events into mathematically correct double-entry journal entries using `@konto-ledger/core`.
 
 Every monetary value flows through as `BigInt`. Every webhook is signature-verified before processing. Every journal entry is idempotent by design. No UUIDs are hardcoded anywhere — account IDs are resolved dynamically from the database on every startup.
 
@@ -27,7 +27,7 @@ Stripe ──webhook──▶ POST /webhooks/stripe
                └──────────┬─────────┘
                           │
                     ┌─────▼──────┐
-                    │ @konto/core│  Atomic, zero-sum, double-entry insert
+                    │ @konto-ledger/core│  Atomic, zero-sum, double-entry insert
                     │ transfer() │  into PostgreSQL
                     └────────────┘
 ```
@@ -212,7 +212,7 @@ stripe-ledger: missing or invalid environment variables:
 
 ```
 apps/stripe-ledger/
-├── package.json              # @konto/stripe-ledger manifest
+├── package.json              # @konto-ledger/stripe-ledger manifest
 ├── tsconfig.json             # Extends root tsconfig (strict: true)
 ├── README.md                 # This file
 └── src/
@@ -231,7 +231,7 @@ apps/stripe-ledger/
 
 ## Database Connection
 
-The service uses `postgres` (Postgres.js) directly — no adapter wrapper. Postgres.js's tagged-template API natively satisfies the `KontoQueryExecutor` interface that `@konto/core` requires:
+The service uses `postgres` (Postgres.js) directly — no adapter wrapper. Postgres.js's tagged-template API natively satisfies the `KontoQueryExecutor` interface that `@konto-ledger/core` requires:
 
 | KontoQueryExecutor method | Postgres.js equivalent |
 |---------------------------|------------------------|
@@ -264,4 +264,4 @@ These properties hold at all times and must never be violated:
 3. **Idempotency via Stripe event ID** — The `idempotencyKey` on every `transfer()` is the `evt_...` ID, never a random value
 4. **Zero-sum journals** — Every journal entry sums to exactly `0n` across all legs
 5. **Verified-only processing** — No Stripe event is processed without successful `constructEvent()` verification
-6. **No modifications outside `apps/stripe-ledger/`** — This package does not touch `@konto/core`, `@konto/adapters`, `@konto/types`, or any other workspace package
+6. **No modifications outside `apps/stripe-ledger/`** — This package does not touch `@konto-ledger/core`, `@konto-ledger/adapters`, `@konto-ledger/types`, or any other workspace package

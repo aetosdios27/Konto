@@ -6,9 +6,9 @@ import {
 } from "@testcontainers/postgresql";
 import path from "path";
 import { migrate } from "../src/commands/migrate";
-import { createAccount } from "@konto/core";
-import { transfer } from "@konto/core";
-import { getBalance } from "@konto/core";
+import { createAccount } from "@konto-ledger/core";
+import { transfer } from "@konto-ledger/core";
+import { getBalance } from "@konto-ledger/core";
 
 /**
  * End-to-end integration test for the CLI migration flow.

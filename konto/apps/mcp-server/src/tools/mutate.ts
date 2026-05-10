@@ -1,5 +1,5 @@
 /**
- * @konto/mcp-server — Mutation Tools (AAP Oversight Layer)
+ * @konto-ledger/mcp-server — Mutation Tools (AAP Oversight Layer)
  *
  * CRITICAL CONSTRAINT: Agents are mathematically forbidden from
  * unilaterally executing financial mutations.
@@ -10,15 +10,15 @@
  *   2. We validate the payload, generate a deterministic idempotency key,
  *      and persist the intent to konto_staged_intents via stageIntent().
  *   3. We return the StagedIntent WITHOUT executing the mutation.
- *   4. A human operator approves execution via `npx @konto/cli approve <id>`.
+ *   4. A human operator approves execution via `npx @konto-ledger/cli approve <id>`.
  *
  * await transfer() is NEVER called from this module.
  */
 
 import { randomUUID } from "crypto";
-import { TransferPayloadSchema, stageIntent } from "@konto/core";
-import type { KontoQueryExecutor } from "@konto/types";
-import { getAccount } from "@konto/core";
+import { TransferPayloadSchema, stageIntent } from "@konto-ledger/core";
+import type { KontoQueryExecutor } from "@konto-ledger/types";
+import { getAccount } from "@konto-ledger/core";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -128,7 +128,7 @@ export async function kontoTransferStaged(
     instruction:
       "Intent persisted to konto_staged_intents (expires: " +
       expiresAt +
-      "). Run `npx @konto/cli approve " +
+      "). Run `npx @konto-ledger/cli approve " +
       intentId +
       "` to review and execute.",
   };
@@ -192,7 +192,7 @@ export async function kontoCommitHoldStaged(
     instruction:
       "Intent persisted to konto_staged_intents (expires: " +
       expiresAt +
-      "). Run `npx @konto/cli approve " +
+      "). Run `npx @konto-ledger/cli approve " +
       intentId +
       "` to review and execute.",
   };
@@ -254,7 +254,7 @@ export async function kontoRollbackHoldStaged(
     instruction:
       "Intent persisted to konto_staged_intents (expires: " +
       expiresAt +
-      "). Run `npx @konto/cli approve " +
+      "). Run `npx @konto-ledger/cli approve " +
       intentId +
       "` to review and execute.",
   };

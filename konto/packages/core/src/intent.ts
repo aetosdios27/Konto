@@ -1,5 +1,5 @@
 /**
- * @konto/core — Staged Intent System
+ * @konto-ledger/core — Staged Intent System
  *
  * Implements the Agent Authorization Profile (AAP) approval loop.
  *
@@ -9,7 +9,7 @@
  * getPendingIntents() → Lists all PENDING, non-expired intents for human review.
  */
 
-import type { KontoQueryExecutor } from "@konto/types";
+import type { KontoQueryExecutor } from "@konto-ledger/types";
 import { transfer } from "./transfer";
 import { commitHold, rollbackHold } from "./hold";
 

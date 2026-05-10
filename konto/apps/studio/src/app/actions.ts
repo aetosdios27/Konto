@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { executeIntent, rejectIntent, transfer, hold, commitHold, rollbackHold } from "@konto/core";
+import { executeIntent, rejectIntent, transfer, hold, commitHold, rollbackHold } from "@konto-ledger/core";
 import { sql } from "@/lib/db";
 import { randomUUID } from "crypto";
 

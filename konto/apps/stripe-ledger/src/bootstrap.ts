@@ -1,4 +1,4 @@
-import { createAccount } from "@konto/core";
+import { createAccount } from "@konto-ledger/core";
 import { sql } from "./db.js";
 
 // ── Account registry ───────────────────────────────────────────────────────

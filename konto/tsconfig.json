@@ -17,7 +17,7 @@
     "lib": ["ES2022"],
     "baseUrl": ".",
     "paths": {
-      "@konto/*": ["packages/*/src"],
+      "@konto-ledger/*": ["packages/*/src"],
     },
   },
   "include": ["packages/*/src/**/*"],

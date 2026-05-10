@@ -326,7 +326,7 @@ CREATE TABLE konto_staged_intents (
 
 **Design decisions:**
 - **Persisted, not ephemeral** — When an agent calls `konto_transfer` via MCP, the payload is validated (Zod schema, zero-sum, account existence) and persisted to `konto_staged_intents` via `stageIntent()`. The `intentId` returned to the agent is the database-generated UUID, not an ephemeral random value. The mutation is never called.
-- **Human approval loop** — A human operator reviews the intent via `npx @konto/cli approve <intent_id>`, which displays the financial impact, prompts for confirmation, and only then calls `executeIntent()` to execute the stored payload. The MCP server's response includes the exact CLI command in its `instruction` field.
+- **Human approval loop** — A human operator reviews the intent via `npx @konto-ledger/cli approve <intent_id>`, which displays the financial impact, prompts for confirmation, and only then calls `executeIntent()` to execute the stored payload. The MCP server's response includes the exact CLI command in its `instruction` field.
 - **Terminal states** — Intents transition to `EXECUTED` (approved and run), `REJECTED` (denied by operator), or `EXPIRED` (TTL exceeded). All states are immutable once set.
 - **Idempotency** — Each intent carries a `UNIQUE` idempotency key (prefixed `mcp-`) to prevent duplicate staging from agent retries.
 - **TTL Expiration** — Every intent is created with an `expires_at` timestamp (default: 24 hours, max: 7 days). Expired intents are automatically transitioned to `EXPIRED` on access — both when `executeIntent()` is called and when `getPendingIntents()` lists pending intents. The CLI `approve` command also checks expiration and shows remaining time. This prevents stale, unapproved intents from accumulating as financial state debt.
@@ -341,7 +341,7 @@ MCP Agent                          konto_staged_intents              Human Opera
    │                           + persist ──▶ INSERT (PENDING)             │
    │◀── StagedIntent {intentId, instruction}│                             │
    │                                        │                             │
-   │  "Run: konto approve <id>"             │   npx @konto/cli approve <id>
+   │  "Run: konto approve <id>"             │   npx @konto-ledger/cli approve <id>
    │                                        │◀────────────────────────────│
    │                                        │   Display financial impact  │
    │                                        │   Confirm? (y/N)            │
@@ -358,7 +358,7 @@ MCP Agent                          konto_staged_intents              Human Opera
 Konto implements dependency-injected structured logging via the `KontoLogger` interface. The core library remains zero-dependency — if no logger is injected, all log calls are silently no-oped.
 
 ```typescript
-import { setKontoLogger } from '@konto/core';
+import { setKontoLogger } from '@konto-ledger/core';
 import pino from 'pino';
 
 setKontoLogger(pino()); // Compatible with pino, winston, console, or any structured logger

@@ -1,5 +1,5 @@
 /**
- * @konto/mcp-server — Read Tools (The Facts Layer)
+ * @konto-ledger/mcp-server — Read Tools (The Facts Layer)
  *
  * These tools provide deterministic, deeply-structured, self-describing
  * JSON objects to autonomous agents. Flat arrays are forbidden.
@@ -8,12 +8,12 @@
  * without needing domain knowledge of double-entry accounting.
  */
 
-import type { KontoQueryExecutor } from "@konto/types";
+import type { KontoQueryExecutor } from "@konto-ledger/types";
 import {
   getAccount,
   getBalance,
   getJournals,
-} from "@konto/core";
+} from "@konto-ledger/core";
 
 // ── konto_get_balance ──────────────────────────────────────────────────────
 export async function kontoGetBalance(

@@ -20,7 +20,7 @@ export async function generateCommand() {
     log.message(
       `Please create one. Example:\n\n` +
       pc.dim(`import { z } from "zod";\n`) +
-      pc.dim(`import { defineLedger } from "@konto/cli";\n\n`) +
+      pc.dim(`import { defineLedger } from "@konto-ledger/cli";\n\n`) +
       pc.dim(`export default defineLedger({\n`) +
       pc.dim(`  transfer: z.object({\n`) +
       pc.dim(`    invoice_id: z.string(),\n`) +

@@ -1,5 +1,5 @@
 /**
- * @konto/core — Snapshot Daemon
+ * @konto-ledger/core — Snapshot Daemon
  *
  * A lightweight worker that continuously polls the database every 60 seconds,
  * identifies accounts with more than 1,000 new entries since their last

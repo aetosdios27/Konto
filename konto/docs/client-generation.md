@@ -28,7 +28,7 @@ The root cause: **the type system and runtime validation had no opinion about wh
 
 Konto solves this by letting you define your metadata schema once using **Zod**, then generating a typed client that enforces it at compile time *and* validates it at runtime.
 
-Because `konto.config.ts` is real executable project code, the consuming app must have both `@konto/cli` and `zod` installed. The generator loads that file directly via `jiti`; it is not parsing a static JSON manifest.
+Because `konto.config.ts` is real executable project code, the consuming app must have both `@konto-ledger/cli` and `zod` installed. The generator loads that file directly via `jiti`; it is not parsing a static JSON manifest.
 
 `defineLedger()` is intentionally typed as a generic identity helper: it returns the exact Zod object map you pass in, rather than widening it to a loose interface. That detail is what allows the generated `.d.ts` file to preserve your literal schema shapes and expose precise metadata inference back to application code.
 
@@ -38,7 +38,7 @@ Create a `konto.config.ts` in your project root:
 
 ```typescript
 import { z } from "zod";
-import { defineLedger } from "@konto/cli";
+import { defineLedger } from "@konto-ledger/cli";
 
 export default defineLedger({
   transfer: z.object({
@@ -72,7 +72,7 @@ export default defineLedger({
 
 ## The `.konto` Proxy (Under the Hood)
 
-When you run `npx @konto/cli generate`, the generator doesn't output a file to your `src/` directory. It writes directly to `node_modules/.konto/`. This is the exact same pattern used by Prisma.
+When you run `npx @konto-ledger/cli generate`, the generator doesn't output a file to your `src/` directory. It writes directly to `node_modules/.konto/`. This is the exact same pattern used by Prisma.
 
 ### What Gets Generated
 
@@ -95,10 +95,10 @@ This turns the directory into a valid Node.js package. When TypeScript or Node e
 The developer-facing config import also comes from the package entrypoint:
 
 ```typescript
-import { defineLedger } from "@konto/cli";
+import { defineLedger } from "@konto-ledger/cli";
 ```
 
-That means `@konto/cli` must act as both a CLI binary and a normal ESM import surface. The config contract is only truly valid when both of those entrypoints work.
+That means `@konto-ledger/cli` must act as both a CLI binary and a normal ESM import surface. The config contract is only truly valid when both of those entrypoints work.
 
 #### `index.d.ts`
 
@@ -121,7 +121,7 @@ The developer now gets full autocomplete on `metadata.invoice_id`, compile-time 
 The runtime proxy. It implements a zero-configuration singleton (just like `PrismaClient`) and executes your actual Zod schemas against incoming payloads dynamically:
 
 ```javascript
-import { transfer as coreTransfer } from "@konto/core";
+import { transfer as coreTransfer } from "@konto-ledger/core";
 import { createJiti } from "jiti";
 import postgres from "postgres";
 import path from "path";
@@ -167,14 +167,14 @@ The generated `.konto` proxy defaults to a `postgres.js` singleton, but the unde
 | Adapter | Package | Status |
 | --- | --- | --- |
 | `postgres.js` (direct) | — | **Production** |
-| Vercel Postgres | `@konto/adapters/vercel` | **Production** |
-| Neon Serverless | `@konto/adapters/neon` | **Production** |
-| Supabase | `@konto/adapters/supabase` | **Experimental** — throws at runtime |
+| Vercel Postgres | `@konto-ledger/adapters/vercel` | **Production** |
+| Neon Serverless | `@konto-ledger/adapters/neon` | **Production** |
+| Supabase | `@konto-ledger/adapters/supabase` | **Experimental** — throws at runtime |
 
 To use the Neon adapter with the generated client:
 
 ```typescript
-import { createKontoClient } from '@konto/adapters/neon';
+import { createKontoClient } from '@konto-ledger/adapters/neon';
 import { neon } from '@neondatabase/serverless';
 import { setKontoAdapter } from '.konto';
 
@@ -187,7 +187,7 @@ Three reasons:
 
 1. **No `tsconfig.json` modifications** — Putting a file in `src/generated/client.ts` would require the user to configure path aliases or adjust their `include` patterns. Writing to `node_modules/` leverages Node's built-in module resolution. It Just Works™.
 
-2. **No Git contamination** — `node_modules/` is universally `.gitignore`d. The generated client is ephemeral — it's rebuilt on `npx @konto/cli generate` and should never be committed. This matches the mental model of "generated code belongs in build artifacts, not source."
+2. **No Git contamination** — `node_modules/` is universally `.gitignore`d. The generated client is ephemeral — it's rebuilt on `npx @konto-ledger/cli generate` and should never be committed. This matches the mental model of "generated code belongs in build artifacts, not source."
 
 3. **Established precedent** — Prisma Client uses the exact same pattern (`node_modules/.prisma/client/`). Developers already expect this behavior from code generators in the Node.js ecosystem.
 
@@ -199,7 +199,7 @@ Three reasons:
 Developer writes konto.config.ts (with Zod)
          │
          ▼
-   npx @konto/cli generate
+   npx @konto-ledger/cli generate
          │
          ├──▶  Writes proxy package to node_modules/.konto/
          ├──▶  index.d.ts infers Zod types via relative import

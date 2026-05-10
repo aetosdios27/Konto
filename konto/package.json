@@ -18,8 +18,8 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@konto/cli": "workspace:^",
-    "@konto/core": "workspace:^",
+    "@konto-ledger/cli": "workspace:^",
+    "@konto-ledger/core": "workspace:^",
     "postgres": "^3.4.5",
     "zod": "^3.25.76"
   }

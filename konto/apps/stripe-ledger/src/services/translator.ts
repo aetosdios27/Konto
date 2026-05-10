@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { transfer } from "@konto/core";
+import { transfer } from "@konto-ledger/core";
 import { config } from "../config.js";
 import { sql } from "../db.js";
 import { accounts } from "../bootstrap.js";

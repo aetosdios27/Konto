@@ -2,7 +2,7 @@
 --
 -- Adds the konto_staged_intents table for the Agent Authorization Profile.
 -- MCP mutation tools stage intents here; human operators approve and execute them
--- via `npx @konto/cli approve <intent_id>`.
+-- via `npx @konto-ledger/cli approve <intent_id>`.
 
 DO $$
 BEGIN

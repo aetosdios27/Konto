@@ -1,5 +1,5 @@
 {
-  "name": "@konto/types",
+  "name": "@konto-ledger/types",
   "version": "0.1.0",
   "description": "Shared TypeScript interfaces for Konto database executors.",
   "license": "MIT",

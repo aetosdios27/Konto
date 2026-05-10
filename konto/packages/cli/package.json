@@ -1,5 +1,5 @@
 {
-  "name": "@konto/cli",
+  "name": "@konto-ledger/cli",
   "version": "0.1.0",
   "description": "CLI and typed client generator for Konto ledgers.",
   "license": "MIT",
@@ -47,7 +47,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.7.0",
-    "@konto/types": "workspace:^",
+    "@konto-ledger/types": "workspace:^",
     "cac": "^6.7.14",
     "dotenv": "^16.4.5",
     "jiti": "^2.6.1",
@@ -58,7 +58,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@konto/core": "workspace:^",
+    "@konto-ledger/core": "workspace:^",
     "@testcontainers/postgresql": "^11.14.0",
     "@types/node": "^22",
     "testcontainers": "^11.14.0",

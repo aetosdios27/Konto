@@ -1,12 +1,12 @@
 # Adapters
 
-`@konto/adapters` provides first-party driver adapters that satisfy the `KontoQueryExecutor` interface from `@konto/types`. Each adapter bridges a specific PostgreSQL client library into the interface that `@konto/core` expects for all ledger operations.
+`@konto-ledger/adapters` provides first-party driver adapters that satisfy the `KontoQueryExecutor` interface from `@konto-ledger/types`. Each adapter bridges a specific PostgreSQL client library into the interface that `@konto-ledger/core` expects for all ledger operations.
 
 ---
 
 ## How Adapters Work
 
-`@konto/core` never imports a database driver directly. All functions accept a `KontoQueryExecutor` as their first argument:
+`@konto-ledger/core` never imports a database driver directly. All functions accept a `KontoQueryExecutor` as their first argument:
 
 ```typescript
 interface KontoQueryExecutor {
@@ -46,7 +46,7 @@ The stitching logic (`buildQuery`) handles the following edge cases:
 
 ---
 
-## Vercel Postgres (`@konto/adapters/vercel`)
+## Vercel Postgres (`@konto-ledger/adapters/vercel`)
 
 **Status: Production-ready**
 
@@ -55,18 +55,18 @@ Wraps `@vercel/postgres`, which operates over HTTP connections to Vercel's manag
 ### Install
 
 ```bash
-npm install @konto/adapters @vercel/postgres
+npm install @konto-ledger/adapters @vercel/postgres
 ```
 
 ### Usage
 
 ```typescript
-import { createVercelAdapter } from '@konto/adapters/vercel';
+import { createVercelAdapter } from '@konto-ledger/adapters/vercel';
 
 const konto = createVercelAdapter(process.env.POSTGRES_URL);
 
-// Use directly with @konto/core:
-import { transfer, getBalance } from '@konto/core';
+// Use directly with @konto-ledger/core:
+import { transfer, getBalance } from '@konto-ledger/core';
 const result = await transfer(konto, { entries: [...] });
 ```
 
@@ -81,7 +81,7 @@ function createVercelAdapter(connectionString?: string): KontoQueryExecutor
 
 ---
 
-## Neon Serverless (`@konto/adapters/neon`)
+## Neon Serverless (`@konto-ledger/adapters/neon`)
 
 **Status: Production-ready**
 
@@ -90,19 +90,19 @@ Wraps the `neon()` HTTP client from `@neondatabase/serverless`. This is the corr
 ### Install
 
 ```bash
-npm install @konto/adapters @neondatabase/serverless
+npm install @konto-ledger/adapters @neondatabase/serverless
 ```
 
 ### Usage
 
 ```typescript
-import { createKontoClient } from '@konto/adapters/neon';
+import { createKontoClient } from '@konto-ledger/adapters/neon';
 import { neon } from '@neondatabase/serverless';
 
 const konto = createKontoClient(neon(process.env.DATABASE_URL));
 
-// Use directly with @konto/core:
-import { transfer, getBalance } from '@konto/core';
+// Use directly with @konto-ledger/core:
+import { transfer, getBalance } from '@konto-ledger/core';
 const result = await transfer(konto, { entries: [...] });
 ```
 
@@ -118,15 +118,15 @@ function createKontoClient(sql: ReturnType<typeof neon>): KontoQueryExecutor
 
 ---
 
-## Supabase (`@konto/adapters/supabase`)
+## Supabase (`@konto-ledger/adapters/supabase`)
 
 **Status: Experimental — throws at runtime**
 
 The Supabase adapter is not production-ready. It logs a warning and throws immediately when called:
 
 ```
-[konto] @konto/adapters/supabase is not yet production-ready.
-Use @konto/adapters/vercel or @konto/adapters/neon instead.
+[konto] @konto-ledger/adapters/supabase is not yet production-ready.
+Use @konto-ledger/adapters/vercel or @konto-ledger/adapters/neon instead.
 ```
 
 > **Why not silently fail?** A financial library that partially executes and produces wrong results is worse than one that fails loudly. The function is typed as `never` — it makes the no-return contract explicit at the type level.
@@ -139,17 +139,17 @@ import postgres from 'postgres';
 const sql = postgres(process.env.DATABASE_URL);
 
 // Use the raw postgres.js sql object directly as KontoQueryExecutor
-import { transfer } from '@konto/core';
+import { transfer } from '@konto-ledger/core';
 await transfer(sql as any, { entries: [...] });
 ```
 
-This works because `postgres.js`'s tagged template interface is structurally compatible with `KontoQueryExecutor`. The `@konto/adapters/supabase` wrapper adds nothing useful on top of this until a proper implementation is written.
+This works because `postgres.js`'s tagged template interface is structurally compatible with `KontoQueryExecutor`. The `@konto-ledger/adapters/supabase` wrapper adds nothing useful on top of this until a proper implementation is written.
 
 ---
 
 ## Peer Dependencies
 
-`@konto/adapters` declares all three drivers as **optional peer dependencies**. You only need to install the one you use:
+`@konto-ledger/adapters` declares all three drivers as **optional peer dependencies**. You only need to install the one you use:
 
 ```json
 "peerDependencies": {
@@ -172,10 +172,10 @@ Each adapter is individually importable to avoid bundling unused drivers:
 
 | Import | File |
 | --- | --- |
-| `@konto/adapters` | `dist/index.js` (all adapters re-exported) |
-| `@konto/adapters/vercel` | `dist/vercel.js` |
-| `@konto/adapters/neon` | `dist/neon.js` |
-| `@konto/adapters/supabase` | `dist/supabase.js` |
+| `@konto-ledger/adapters` | `dist/index.js` (all adapters re-exported) |
+| `@konto-ledger/adapters/vercel` | `dist/vercel.js` |
+| `@konto-ledger/adapters/neon` | `dist/neon.js` |
+| `@konto-ledger/adapters/supabase` | `dist/supabase.js` |
 
 ---
 
@@ -185,7 +185,7 @@ Any object that satisfies `KontoQueryExecutor` works. Here is a minimal example 
 
 ```typescript
 import postgres from 'postgres';
-import type { KontoQueryExecutor } from '@konto/types';
+import type { KontoQueryExecutor } from '@konto-ledger/types';
 
 const sql = postgres(process.env.DATABASE_URL);
 
