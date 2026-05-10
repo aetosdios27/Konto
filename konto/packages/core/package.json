@@ -1,6 +1,6 @@
 {
   "name": "@konto-ledger/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Strictly-typed double-entry ledger primitives for PostgreSQL.",
   "license": "MIT",
   "homepage": "https://github.com/aetosdios27/Konto#readme",

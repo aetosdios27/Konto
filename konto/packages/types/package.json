@@ -1,6 +1,6 @@
 {
   "name": "@konto-ledger/types",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shared TypeScript interfaces for Konto database executors.",
   "license": "MIT",
   "homepage": "https://github.com/aetosdios27/Konto#readme",

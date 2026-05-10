@@ -1,6 +1,6 @@
 {
   "name": "@konto-ledger/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI and typed client generator for Konto ledgers.",
   "license": "MIT",
   "homepage": "https://github.com/aetosdios27/Konto#readme",
