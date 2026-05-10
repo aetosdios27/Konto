@@ -394,3 +394,85 @@ The **snapshot daemon** (`packages/core/scripts/snapshot-daemon.ts`) is a lightw
 ```bash
 DATABASE_URL="postgres://..." npx tsx packages/core/scripts/snapshot-daemon.ts
 ```
+
+---
+
+## 8. Konto Studio (Admin Dashboard)
+
+Konto Studio (`apps/studio`) is a first-party Next.js 16 dashboard that provides direct graphical administration of the ledger. It connects to Postgres via raw `postgres.js` in Server Components — no ORM, no REST layer, no abstraction.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Browser                               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │
+│  │ Accounts (/) │  │ Transfers    │  │ Holds (countdown)│   │
+│  │ + New Acct   │  │ + Direct     │  │ + Live timer     │   │
+│  │   dialog     │  │   xfer form  │  │   via setInterval│   │
+│  └──────────────┘  └──────────────┘  └──────────────────┘   │
+│  ┌──────────────┐  ┌──────────────────────────────────────┐  │
+│  │ Account      │  │ Intents (AAP Approval Queue)        │  │
+│  │ Detail [id]  │  │ + Approve / Reject buttons          │  │
+│  └──────────────┘  └──────────────────────────────────────┘  │
+└────────────────────────────┬────────────────────────────────┘
+                             │  Server Actions (Next.js)
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    PostgreSQL (Konto Schema)                  │
+│  ┌─────────┐ ┌─────────┐ ┌────────┐ ┌──────────────────┐   │
+│  │accounts │ │journals │ │entries │ │staged_intents    │   │
+│  │         │ │         │ │        │ │                  │   │
+│  └─────────┘ └─────────┘ └────────┘ └──────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Server Components vs Client Components
+
+The Studio uses a deliberate split between server and client rendering:
+
+- **Server Components** — All data fetching. Account lists, journal hydration, hold queries, and intent lists are rendered server-side with zero JavaScript shipped to the client for those views. The `LATERAL JOIN` balance derivation runs entirely in Postgres.
+- **Client Components** — Interactive forms (account creation, transfers) and the hold countdown timer. The `HoldCountdown` uses `useEffect` + `setInterval` because server-rendered relative timestamps go stale immediately.
+
+### The Genesis Funding Pattern
+
+When a developer creates an account with an initial balance, the system needs to credit funds from somewhere — but double-entry accounting doesn't allow money from thin air.
+
+The solution is a **deterministic system account** per currency:
+
+```
+__konto_genesis_USD__    (account_type: LIABILITY)
+__konto_genesis_EUR__    (account_type: LIABILITY)
+__konto_genesis_INR__    (account_type: LIABILITY)
+```
+
+The flow:
+
+1. **Create the user's account** via `INSERT`.
+2. **Find or create the genesis account** via `INSERT ... ON CONFLICT (name) DO NOTHING`, then `SELECT` its ID.
+3. **Execute a zero-sum transfer**: debit genesis (goes negative), credit the new account.
+
+**Why `LIABILITY`?**
+
+A genesis account represents "money owed to the outside world." When real money enters the system (via a payment processor, bank transfer, etc.), the genesis account's negative balance represents the obligation the system has accepted. `LIABILITY` accounts bypass the zero-balance floor in both `transfer()` and `hold()`, so they naturally accommodate the negative balances that result from funding operations.
+
+**Why `ON CONFLICT (name) DO NOTHING`?**
+
+The genesis lookup must be collision-safe. The `UNIQUE` constraint on `name` (migration `0004_account_name_unique.sql`) guarantees that `INSERT ... ON CONFLICT (name) DO NOTHING` either creates the account or silently skips if it already exists. A subsequent `SELECT` retrieves the canonical ID regardless of which code path executed.
+
+**Why double underscores?**
+
+The `__konto_genesis_XXX__` naming convention uses double underscores to signal "this is a system-internal account, not a user-created one." The Studio UI checks for this prefix and:
+- Grey out the row, disable click-through links, and add a `GENESIS` badge.
+- Relabel the account as `SYSTEM_GENESIS` in transfer dropdowns.
+- Keep them selectable for manual fund drainage (defensive UX).
+
+### Idempotency in the Browser
+
+The `DirectTransferForm` generates a `crypto.randomUUID()` on component mount (not on submit). This key is passed to the server action, which forwards it as the `idempotencyKey` to `transfer()`. The database's `UNIQUE(account_id, idempotency_key)` constraint catches duplicates.
+
+The key is only rotated after a *successful* commit via `setIdempotencyKey(crypto.randomUUID())`. This means:
+- **Double-click**: Second request carries the same key → `KontoDuplicateTransactionError`. Safe.
+- **Network retry**: Same key → same error. Safe.
+- **User corrects and resubmits**: Key was not rotated (previous attempt failed) → same key → same duplicate check. The user must trigger a page refresh or successful commit to get a fresh key.
+

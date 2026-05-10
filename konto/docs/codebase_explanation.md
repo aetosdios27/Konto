@@ -13,7 +13,7 @@ The project root is configured via `pnpm-workspace.yaml` and `turbo.json`, which
 
 Currently, the scaffolding is present but sparsely populated except for the core engine:
 
-- **`apps/studio`**: **Empty**. (Intended to be a web interface or visual dashboard for ledger management/analytics).
+- **`apps/studio`**: **Active**. A brutalist Next.js 16 App Router command center connecting directly to Postgres via Server Components. Provides five views: Accounts (with liquid balances), Account Detail (journal history), Transfers (Zod-validated direct mutation form), Escrow Holds (real-time countdown), and Agent Intents (approve/reject queue). Ships with native mutation forms — account creation with Genesis Funding, direct transfers with client-side idempotency — that bypass the Agent Authorization Profile entirely.
 - **`packages/cli`**: **Active**. A lightweight, functional brutalist CLI built with `cac` and `@clack/prompts`, designed to flawlessly inject the strict mathematical `konto` schema directly into raw PostgreSQL instances, AND automatically construct strongly typed DX client bindings dynamically leveraging developer TS configurations.
 - **`packages/types`**: **Active**. Contains the core `KontoQueryExecutor` interface — the Inversion of Control contract every database driver adapter must implement.
 - **`packages/adapters`**: **Active**. First-party adapter implementations for Vercel Postgres and Neon Serverless. The Supabase adapter is explicitly gated as experimental.
@@ -27,13 +27,13 @@ The `packages/core` package is a fully functional double-entry accounting librar
 
 ### 1. Database Schema (`schema.sql`)
 The PostgreSQL schema reflects a classic immutable double-entry architecture heavily tuned against fragmentation at massive scale.
-- **`konto_accounts`**: Tracks individual sub-accounts (nodes). Contains constraints specifically verifying currency format. Uses **UUIDv7** rather than UUIDv4 to maintain B-Tree spatial locality and prevent Index Thrashing at billions of rows.
+- **`konto_accounts`**: Tracks individual sub-accounts (nodes). Contains constraints specifically verifying currency format. Uses **UUIDv7** rather than UUIDv4 to maintain B-Tree spatial locality and prevent Index Thrashing at billions of rows. `account_type` field supports `ASSET`, `LIABILITY`, `EQUITY`, `REVENUE`, and `EXPENSE`. Account names are strictly `UNIQUE` (enforced by migration `0004`).
 - **`konto_journals`**: The atomic grouping for a single transaction action. Enforces **idempotency** constraints (`UNIQUE(account_id, idempotency_key)`) so identical requests from external systems aren't double-processed, while preventing cross-tenant squatting.
 - **`konto_entries`**: The immutable, append-only source of truth connecting journals to accounts. 
   - **Financial Safety**: A strict check constraint (`amount != 0`) avoids meaningless entries. A `DEFERRED` PostgreSQL constraint trigger rigorously forces `SUM(amount) = 0` per journal, making out-of-balance entries physically impossible to commit.
 - **`konto_holds`**: An ephemeral table managing the two-phase commit (Escrow) system. Tracks earmarked funds, but only `PENDING` rows reduce available balance. Built with strict `expires_at` TTL checks (capped at 30 days maximum) and is strictly state-based (`PENDING`, `COMMITTED`, `ROLLED_BACK`) to ensure pristine, undeleted audit trails.
 - **`konto_balance_snapshots`**: Foundation for mathematically sound O(1) balance read scaling. Checkpoints balances securely to drastically truncate the derivation scan ranges. Arbitrary INSERTs are revoked in favor of a secure `take_snapshot(account_id)` stored procedure.
-- **`konto_staged_intents`**: The Agent Authorization Profile (AAP) oversight table. Stores validated financial mutation payloads from autonomous agents as `PENDING` intents. Human operators approve or reject them via the CLI before execution.
+- **`konto_staged_intents`**: The Agent Authorization Profile (AAP) oversight table. Stores validated financial mutation payloads from autonomous agents as `PENDING` intents with TTL expiration. Human operators approve or reject them via the CLI or Studio before execution.
 
 ### 2. Transaction Engines (`transfer.ts` & `hold.ts`)
 The `transfer` and `hold` functions manage the complexity of logging financial movements reliably and atomically.
@@ -61,10 +61,10 @@ Defined specialized domain errors to clearly bubble up faults to consumer applic
 
 ### 5. Staged Intent System (`intent.ts`)
 Implements the backend of the Agent Authorization Profile:
-- **`stageIntent(payload)`**: Inserts a validated intent (TRANSFER, COMMIT_HOLD, ROLLBACK_HOLD) into `konto_staged_intents` as PENDING.
-- **`executeIntent(id)`**: Reads a PENDING intent under a `FOR UPDATE` lock, executes the stored mutation payload via the appropriate core function (`transfer()`, `commitHold()`, `rollbackHold()`), and marks the intent as EXECUTED.
+- **`stageIntent(payload)`**: Inserts a validated intent (TRANSFER, COMMIT_HOLD, ROLLBACK_HOLD) into `konto_staged_intents` as PENDING with a configurable TTL (default: 24h, max: 7 days).
+- **`executeIntent(id)`**: Reads a PENDING intent under a `FOR UPDATE` lock, checks TTL expiration, executes the stored mutation payload via the appropriate core function (`transfer()`, `commitHold()`, `rollbackHold()`), and marks the intent as EXECUTED.
 - **`rejectIntent(id)`**: Marks a PENDING intent as REJECTED without executing the mutation.
-- **`getPendingIntents()`**: Returns all PENDING intents for human review.
+- **`getPendingIntents()`**: Bulk-expires stale intents, then returns all remaining PENDING intents for human review.
 
 ### 6. Logger (`logger.ts`)
 Dependency-injected structured observability:
@@ -83,10 +83,43 @@ A lightweight Node worker that defuses the O(N) `getBalance()` degradation:
 
 ---
 
+## 🖥️ Konto Studio (`apps/studio`)
+
+The Studio is a brutalist, monospace-only, dark-mode-first Next.js 16 dashboard that serves as the primary graphical interface for ledger administration.
+
+### Core Views
+
+| Route | What It Does |
+|---|---|
+| `/` | Accounts table with real-time liquid balances derived via `LATERAL JOIN`s. Genesis system accounts appear greyed out with a `GENESIS` badge. |
+| `/accounts/[id]` | Per-account detail: large balance header (Snapshot + New Entries − Active Holds), plus the 50 most recent journals with color-coded debit/credit legs. |
+| `/transfers` | Dual-pane: left side is a strict Zod-validated transfer form, right side is the 25 most recent journal entries globally. |
+| `/holds` | Escrow holds table with a **real-time client-side countdown**. Uses `setInterval` (not server-rendered `date-fns`). Turns red under 5 minutes. |
+| `/intents` | The human side of the Agent Authorization Profile — pending intents from MCP agents, with Approve/Reject buttons. |
+
+### Genesis Funding
+
+The "Create Account" form includes an optional `Initial Balance` field (in minor units — e.g., `500` = $5.00). When provided, the server:
+1. Creates or finds a deterministic system account named `__konto_genesis_${CURRENCY}__` (e.g. `__konto_genesis_USD__`) with `account_type: 'LIABILITY'`.
+2. Executes an atomic zero-sum transfer: debit genesis, credit the new account.
+
+The genesis account is a `LIABILITY` because it represents money owed to the outside world — the source of truth for funds that entered the system. `LIABILITY` accounts bypass the zero-balance floor by design, so the genesis account naturally carries a negative balance as it funds other accounts.
+
+The naming convention uses double underscores (`__`) to signal system-internal accounts. The lookup uses `INSERT ... ON CONFLICT (name) DO NOTHING` targeting the `UNIQUE` constraint from migration `0004`.
+
+### Client-Side Hardening
+
+- **Idempotency**: Transfer forms generate `crypto.randomUUID()` on mount. The key is only refreshed after a successful commit. Mashing the button produces a `KontoDuplicateTransactionError` on the second hit.
+- **Cross-currency blocking**: Zod `.refine()` prevents selecting a sender and receiver with mismatched currencies.
+- **Self-transfer blocking**: You cannot transfer from an account to itself.
+- **BigInt boundary shielding**: Server Actions return simple JSON (`{ success: boolean }`) to avoid Next.js serialization failures on `BigInt` values.
+
+---
+
 ## 📍 Where the Project has Reached so far
 
 **Completed ✅**
-1. **Monorepo Setup**: Full Turborepo, Next.js configurations (though empty apps), TypeScript, Prettier, and basic linting configurations initialized.
+1. **Monorepo Setup**: Full Turborepo, Next.js configurations, TypeScript, Prettier, and basic linting configurations initialized.
 2. **Core Schema**: Postgres structures, row-level security enabled (though policies are unwritten), optimization indexes established, including the `konto_holds` escrow foundation.
 3. **Ledger Engine**: The raw financial transfer logic is highly optimized, handles high-concurrency correctly with deterministic locks, prevents deadlocks, validates payloads securely, and acts as an atomic unit of accounting truth.
 4. **Escrow (Hold) Protocol Phase 1**: A fully ACID-compliant, two-phase commit system letting external applications natively block/earmark funds without corrupting balance computations. Successfully battle-tested against 1000s of concurrent transfers and holds (Pathological Benchmark).
@@ -114,10 +147,27 @@ A lightweight Node worker that defuses the O(N) `getBalance()` degradation:
     - **Snapshot daemon**: `packages/core/scripts/snapshot-daemon.ts` — a Node worker polling every 60s, finding accounts with >1000 new entries since their last snapshot, and calling `take_snapshot()` to maintain O(1) `getBalance()` performance at scale.
 18. **MCP-to-Database Intent Bridge (Phase 12)**: Wired `stageIntent()` from `@konto/core` into all 3 MCP mutation tools (`kontoTransferStaged`, `kontoCommitHoldStaged`, `kontoRollbackHoldStaged`). Agent-generated intents are now persisted to `konto_staged_intents` with a database-generated UUID — the `intentId` returned to the agent is real, not ephemeral. The MCP server's `instruction` field includes the exact CLI command (`npx @konto/cli approve <id>`) to execute the intent. This closes the complete end-to-end pipeline: **Agent stages → DB stores → Human approves via CLI → Mutation executes.**
 19. **Intent TTL Expiration (Phase 13)**: Added `expires_at` column to `konto_staged_intents` via migration `0007_intent_expiration.sql`. `stageIntent()` now accepts an optional `ttlMs` parameter (default: 24 hours, max: 7 days), mirroring the existing `konto_holds` TTL pattern. Expired intents are auto-transitioned to `EXPIRED` on access — `executeIntent()` checks expiration before executing, `getPendingIntents()` bulk-expires stale rows before returning, and the CLI `approve` command displays remaining time and blocks execution of expired intents. This prevents stale, unapproved intents from accumulating as financial state debt.
+20. **Konto Studio — Initial Dashboard (Phase 14)**: Built `apps/studio` as a brutalist Next.js 16 App Router interface connecting directly to Postgres via Server Components. Serves as the graphical dashboard to view accounts, liquid balances, active holds, journal entries, and the primary GUI for the Agent Authorization Profile (AAP). It allows human operators to visually review pending Agent intents and approve or reject them natively, removing the reliance on the CLI for non-technical users.
+21. **Studio Command Center (Phase 15)**: Promoted the Studio from a read-only viewer to a full mutation interface:
+    - **Native forms** — `CreateAccountForm` and `DirectTransferForm` execute Server Actions directly against Postgres, bypassing the Agent Authorization Profile. A human at the dashboard is already authenticated by physical presence.
+    - **Client-side idempotency** — The transfer form generates `crypto.randomUUID()` on mount. The key is only rotated after a successful commit, so double-clicks hit the database's `UNIQUE(account_id, idempotency_key)` constraint and produce `KontoDuplicateTransactionError` instead of duplicate transfers.
+    - **Cross-currency validation** — Zod `.refine()` prevents selecting sender/receiver accounts with mismatched currencies.
+    - **BigInt boundary shielding** — Server Actions return simple `{ success: boolean }` JSON to avoid Next.js serialization failures when handling `BigInt` values from the ledger.
+22. **Genesis Funding (Phase 16)**: Solved the cold-start problem of double-entry accounting — "I just created an account, why is the balance zero, and how do I put money in?"
+    - The `CreateAccountForm` now accepts an optional `Initial Balance` field, clearly labelled in **minor units** (e.g. `500` = $5.00).
+    - When provided, the server atomically creates a deterministic system account `__konto_genesis_${CURRENCY}__` with `account_type: 'LIABILITY'` and executes a zero-sum transfer to fund the new account.
+    - The genesis naming uses double-underscore convention (`__...__`) to signal system internals. Creation uses `INSERT ... ON CONFLICT (name) DO NOTHING` targeting the `UNIQUE` constraint from migration `0004`.
+    - `LIABILITY` is the correct account type: it represents an obligation to the outside world. It carries a normal negative balance, so the zero-balance floor is bypassed by the ledger engine's `account_type`-aware logic.
+    - The Studio visually distinguishes genesis accounts everywhere — greyed out rows, `GENESIS` badge, `SYSTEM_GENESIS` label in transfer dropdowns. They remain selectable for manual fund drainage.
+23. **Escrow Countdown (Phase 17)**: Built a client-side `HoldCountdown` component (`useEffect` + `setInterval`, not server-rendered `date-fns`). Ticks every second, formats as `Xh Ym` / `Xm Ys` / `Xs`, and turns red (`text-red-400`) when under 5 minutes remain. Shows `Expired` after TTL elapses, `No expiry` for holds without `expires_at`. Only renders for `PENDING` holds — resolved holds show `-`.
 
 **Missing / To-Be-Done 🚧**
-1. **Frontend / Studio App (`apps/studio`)**: Entirely missing. Needs a graphical interface to view accounts, journals, and pending staged intents.
-2. **npm Publish**: All packages (`@konto/core`, `@konto/cli`, `@konto/types`, `@konto/adapters`) are production-ready but have not been published to the npm registry.
+1. **npm Publish**: All packages (`@konto/core`, `@konto/cli`, `@konto/types`, `@konto/adapters`) are production-ready but have not been published to the npm registry.
 
 ## Conclusion
-The repository has an extremely solid mathematical/accounting foundation mimicking industry-standard core banking ledgers. Both the mutation engine and Read API are fully complete inside the core library. The system extends beyond human developers — the MCP server enables autonomous LLM agents to query the ledger and stage financial mutations in real time, with all intents persisted to the database with a 24-hour TTL and requiring human approval via the CLI before execution. The complete agent-to-human pipeline is connected end-to-end with no open loops. The operational layer (observability, automated snapshots, approval CLI, intent expiration) has been hardened for production readiness. The immediate next steps are npm publishing and the `studio` graphical dashboard.
+The repository has an extremely solid mathematical/accounting foundation mimicking industry-standard core banking ledgers. Both the mutation engine and Read API are fully complete inside the core library. The system extends beyond human developers — the MCP server enables autonomous LLM agents to query the ledger and stage financial mutations in real time, with all intents persisted to the database with a TTL. The complete agent-to-human pipeline is connected end-to-end with no open loops.
+
+The operational layer (observability, automated snapshots, approval CLI, intent expiration) has been hardened for production readiness. The system is now fully observable and administrable through Konto Studio — a native command center that lets you create accounts with 1-click genesis funding, execute direct transfers with idempotency protection, watch escrow holds tick down in real time, and approve or reject agent-staged financial mutations. The dashboard treats system accounts as first-class citizens with clear visual distinction, preventing operator confusion in production environments.
+
+The final step is npm publishing.
+

@@ -179,7 +179,7 @@ const konto = createKontoClient(neon(process.env.DATABASE_URL));
 - **[Client Generation](./docs/client-generation.md)** — How `defineLedger` and the `.konto` proxy trick work under the hood.
 - **[Adapters](./docs/adapters.md)** — How the KontoQueryExecutor interface works, per-adapter usage, edge case handling, and peer dependency configuration.
 - **[Codebase Explanation](./docs/codebase_explanation.md)** — Full module-by-module status and implementation notes.
-- **[Stripe Ledger](./apps/stripe-ledger/README.md)** — Standalone sidecar that translates Stripe webhooks into double-entry journal entries via `@konto/core`.
+- **[Konto Studio](./apps/studio/README.md)** — The brutalist command center dashboard: accounts, balances, transfers, escrow countdowns, and agent intent approval.
 - **[MCP Server](./apps/mcp-server/README.md)** — Headless, stdio-based machine endpoint for autonomous agent finance via the Model Context Protocol.
 
 ---
@@ -193,6 +193,8 @@ const konto = createKontoClient(neon(process.env.DATABASE_URL));
 | Validation | `zod` with native `bigint` schemas |
 | CLI | `cac` + `@clack/prompts` + `picocolors` |
 | Config Loader | `jiti` (runtime TS import) |
+| Studio | Next.js 16 (Turbopack) + shadcn/ui + Server Components |
+| MCP Server | `@modelcontextprotocol/sdk` + Bun binary |
 | Testing | `vitest` + `@testcontainers/postgresql` |
 | Bundler | `tsup` (ESM, minified) |
 
@@ -208,9 +210,8 @@ konto/
 │   ├── types/       # Generic Database Driver abstractions.
 │   └── adapters/    # First-party adapters (Vercel, Neon, Supabase).
 ├── apps/
-│   ├── mcp-server/   # MCP stdio server for autonomous agent finance.
-│   ├── stripe-ledger/ # Stripe webhook → Konto double-entry sidecar.
-│   └── studio/      # (Planned) Visual ledger dashboard.
+│   ├── mcp-server/  # MCP stdio server for autonomous agent finance.
+│   └── studio/      # Brutalist admin dashboard (accounts, transfers, holds, intents).
 ├── docs/            # Architecture, client generation, codebase docs.
 └── konto.config.ts  # Example developer configuration.
 ```
