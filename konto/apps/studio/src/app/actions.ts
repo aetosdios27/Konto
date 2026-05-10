@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { executeIntent, rejectIntent, transfer, hold } from "@konto/core";
+import { executeIntent, rejectIntent, transfer, hold, commitHold, rollbackHold } from "@konto/core";
 import { sql } from "@/lib/db";
 import { randomUUID } from "crypto";
 
@@ -99,6 +99,32 @@ export async function initializeHoldAction(
       expiresAt,
       idempotencyKey,
     });
+    revalidatePath("/");
+    revalidatePath("/accounts");
+    revalidatePath("/holds");
+    revalidatePath("/transfers");
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function commitHoldAction(holdId: string) {
+  try {
+    await commitHold(sql as any, holdId);
+    revalidatePath("/");
+    revalidatePath("/accounts");
+    revalidatePath("/holds");
+    revalidatePath("/transfers");
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function rollbackHoldAction(holdId: string) {
+  try {
+    await rollbackHold(sql as any, holdId);
     revalidatePath("/");
     revalidatePath("/accounts");
     revalidatePath("/holds");
