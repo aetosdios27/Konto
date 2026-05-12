@@ -35,7 +35,7 @@ export async function generateCommand() {
     s.message("Loading configuration...");
     const urlStr = typeof __filename !== "undefined" ? __filename : import.meta.url;
     const jiti = createJiti(urlStr);
-    
+
     // In jiti 2: we use async import Native loader
     const configModule: any = await jiti.import(configPath, { default: true });
     const schema = configModule.default || configModule;
@@ -46,7 +46,7 @@ export async function generateCommand() {
     s.stop(pc.green("✔ Client generated safely into node_modules/.konto"));
     log.info(pc.cyan("Import your strict client directly using:"));
     log.message(pc.green("import { transfer, hold } from '.konto';"));
-    
+
     outro("Strict DX enabled. You are ready to build.");
   } catch (err: any) {
     s.stop(pc.red("✖ Generation failed!"));

@@ -55,8 +55,10 @@ export async function initCommand() {
     process.exit(0);
   }
 
+  log.info("We will now configure your local environment. Your database will not be modified without permission.");
+
   const shouldMigrate = await confirm({
-    message: "Would you like to apply the Konto schema migrations to your database now?",
+    message: "Would you also like to apply the Konto schema migrations to your database right now?",
     initialValue: true,
   });
 
@@ -65,13 +67,14 @@ export async function initCommand() {
     process.exit(0);
   }
 
+  log.step("1. Scaffolding local configuration");
   const configPath = path.resolve(process.cwd(), "konto.config.ts");
   if (!fs.existsSync(configPath)) {
-    log.info("Scaffolding konto.config.ts...");
+    log.info("→ Creating konto.config.ts...");
     fs.writeFileSync(configPath, `import { z } from "zod";\nimport { defineLedger } from "@konto-ledger/cli";\n\nexport default defineLedger({\n  transfer: z.object({\n    invoice_id: z.string(),\n  }),\n  hold: z.object({}),\n  journal: z.object({}),\n  account: z.object({}),\n});\n`);
   }
 
-  // Generate localized adapter boilerplate
+  log.step("2. Generating localized adapter boilerplate");
   let libPath = path.resolve(process.cwd(), "src/lib");
   let relativePath = "src/lib/konto.ts";
   if (!fs.existsSync(path.resolve(process.cwd(), "src"))) {
@@ -112,17 +115,17 @@ export async function initCommand() {
       const sql = postgres(dbUrl, { max: 1, idle_timeout: 1 });
       const { migrate } = await import("./migrate");
       const pathModule = await import("path");
-      
+
       const migrationsPath = pathModule.resolve(__dirname, "../migrations");
       const { applied } = await migrate(sql as any, { migrationsPath });
 
       await sql.end();
-      
+
       s.stop(pc.green(`✔ Sequence complete. Applied ${applied.length} migrations!`));
       if (applied.length > 0) {
         applied.forEach(m => log.info(pc.cyan(`  → ${m}`)));
       }
-      
+
       log.info(pc.cyan("Tip: Add KONTO_INITIALIZED=true to your .env to prevent accidental re-runs in production."));
     } catch (err: any) {
       s.stop(pc.red("✖ Migration injection failed!"));
@@ -133,8 +136,8 @@ export async function initCommand() {
     log.info("Skipped migrations. Run `npx @konto-ledger/cli migrate` later to apply them.");
   }
 
-  // Chain the generate command
-  await generateCommand();
+  log.step("3. Generating strictly typed .konto client");
+  await generateCommand(true);
 
   log.success("Setup complete! Here is your quickstart code:");
   log.message(pc.green(`import { createAccount, transfer } from ".konto";\nimport { db } from "./${relativePath.replace(".ts", "")}";\n\nconst alice = await createAccount({ metadata: {} }, db);\nconst bob = await createAccount({ metadata: {} }, db);\n\nawait transfer({\n  entries: [\n    { accountId: alice.id, amount: -5000n },\n    { accountId: bob.id, amount: 5000n },\n  ],\n  metadata: { invoice_id: "INV-001" },\n}, db);`));
