@@ -5,8 +5,10 @@ import path from "path";
 import { createJiti } from "jiti";
 import { generateClient } from "../generator/generateClient";
 
-export async function generateCommand() {
-  intro(pc.bgBlack(pc.white(" KONTO GENERATOR ")));
+export async function generateCommand(isChained: boolean = false) {
+  if (!isChained) {
+    intro(pc.bgBlack(pc.white(" KONTO GENERATOR ")));
+  }
 
   const s = spinner();
   s.start("Scanning for konto.config.ts...");
@@ -47,7 +49,11 @@ export async function generateCommand() {
     log.info(pc.cyan("Import your strict client directly using:"));
     log.message(pc.green("import { transfer, hold } from '.konto';"));
 
-    outro("Strict DX enabled. You are ready to build.");
+    if (!isChained) {
+      outro("Strict DX enabled. You are ready to build.");
+    } else {
+      log.success("Strict DX enabled. You are ready to build.");
+    }
   } catch (err: any) {
     s.stop(pc.red("✖ Generation failed!"));
     log.error(err.message);
