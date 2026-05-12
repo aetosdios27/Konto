@@ -46,6 +46,60 @@ The stitching logic (`buildQuery`) handles the following edge cases:
 
 ---
 
+## Prisma ORM Sidecar (\`@konto-ledger/adapters/prisma\`)
+
+**Status: Production-ready**
+
+Allows you to use your existing \`PrismaClient\` instance as the underlying query executor for Konto. This "sidecar" pattern ensures Konto shares your existing connection pool without needing a dedicated raw Postgres connection.
+
+### Install
+
+\`\`\`bash
+npm install @konto-ledger/adapters @prisma/client
+\`\`\`
+
+### Usage
+
+\`\`\`typescript
+import { createPrismaAdapter } from '@konto-ledger/adapters/prisma';
+import { PrismaClient } from '@prisma/client';
+
+export const prisma = new PrismaClient();
+export const db = createPrismaAdapter(prisma);
+
+// Use db with @konto-ledger/core
+\`\`\`
+
+---
+
+## Drizzle ORM Sidecar (\`@konto-ledger/adapters/drizzle\`)
+
+**Status: Production-ready**
+
+Allows you to use your existing Drizzle ORM instance as the underlying query executor. 
+
+### Install
+
+\`\`\`bash
+npm install @konto-ledger/adapters drizzle-orm postgres
+\`\`\`
+
+### Usage
+
+\`\`\`typescript
+import { createDrizzleAdapter } from '@konto-ledger/adapters/drizzle';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+
+const client = postgres(process.env.DATABASE_URL!);
+export const drizzleDb = drizzle(client);
+export const db = createDrizzleAdapter(drizzleDb);
+
+// Use db with @konto-ledger/core
+\`\`\`
+
+---
+
 ## Vercel Postgres (`@konto-ledger/adapters/vercel`)
 
 **Status: Production-ready**
@@ -149,18 +203,15 @@ This works because `postgres.js`'s tagged template interface is structurally com
 
 ## Peer Dependencies
 
-`@konto-ledger/adapters` declares all three drivers as **optional peer dependencies**. You only need to install the one you use:
+`@konto-ledger/adapters` declares all supported drivers as **optional peer dependencies**. You only need to install the ones you use:
 
 ```json
 "peerDependencies": {
+  "@prisma/client": "^5.0.0",
+  "drizzle-orm": "^0.30.0",
   "@vercel/postgres": "^0.10.0",
   "@neondatabase/serverless": "^1.1.0",
   "postgres": "^3.4.5"
-},
-"peerDependenciesMeta": {
-  "@vercel/postgres": { "optional": true },
-  "@neondatabase/serverless": { "optional": true },
-  "postgres": { "optional": true }
 }
 ```
 
@@ -173,6 +224,8 @@ Each adapter is individually importable to avoid bundling unused drivers:
 | Import | File |
 | --- | --- |
 | `@konto-ledger/adapters` | `dist/index.js` (all adapters re-exported) |
+| `@konto-ledger/adapters/prisma` | `dist/prisma.js` |
+| `@konto-ledger/adapters/drizzle` | `dist/drizzle.js` |
 | `@konto-ledger/adapters/vercel` | `dist/vercel.js` |
 | `@konto-ledger/adapters/neon` | `dist/neon.js` |
 | `@konto-ledger/adapters/supabase` | `dist/supabase.js` |

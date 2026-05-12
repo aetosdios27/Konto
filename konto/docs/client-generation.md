@@ -183,13 +183,29 @@ setKontoAdapter(createKontoClient(neon(process.env.DATABASE_URL)));
 
 ### Why `node_modules/` Instead of `src/`?
 
-Three reasons:
+By default, the generator outputs to `node_modules/.konto` for three reasons:
 
-1. **No `tsconfig.json` modifications** — Putting a file in `src/generated/client.ts` would require the user to configure path aliases or adjust their `include` patterns. Writing to `node_modules/` leverages Node's built-in module resolution. It Just Works™.
+1. **No `tsconfig.json` modifications** — Putting a file in `src/generated/client.ts` requires you to configure path aliases or adjust `include` patterns. Writing to `node_modules/` leverages Node's built-in module resolution. It Just Works™.
+2. **No Git contamination** — `node_modules/` is universally `.gitignore`d. The generated client is ephemeral — it's rebuilt on `npx @konto-ledger/cli generate` and should never be committed.
+3. **Established precedent** — Prisma Client uses the exact same pattern (`node_modules/.prisma/client/`). 
 
-2. **No Git contamination** — `node_modules/` is universally `.gitignore`d. The generated client is ephemeral — it's rebuilt on `npx @konto-ledger/cli generate` and should never be committed. This matches the mental model of "generated code belongs in build artifacts, not source."
+### Monorepo Support (`--output`)
 
-3. **Established precedent** — Prisma Client uses the exact same pattern (`node_modules/.prisma/client/`). Developers already expect this behavior from code generators in the Node.js ecosystem.
+If you are using a complex Turborepo or PNPM workspace where `node_modules` is hoisted to the root directory, the default output path may cause resolution errors. 
+
+You can override the output directory using the `--output` flag:
+
+```bash
+npx @konto-ledger/cli generate --output ./src/konto-client
+```
+
+This will emit the same `index.js`, `index.d.ts`, and `package.json` into your local `src/konto-client` folder, allowing you to explicitly declare it as a local workspace dependency in your app's `package.json`:
+
+```json
+"dependencies": {
+  ".konto": "file:./src/konto-client"
+}
+```
 
 ---
 
