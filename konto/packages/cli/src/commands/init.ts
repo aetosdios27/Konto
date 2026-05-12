@@ -140,5 +140,19 @@ export async function initCommand() {
   await generateCommand(true);
 
   log.success("Setup complete! Here is your quickstart code:");
-  log.message(pc.green(`import { createAccount, transfer } from ".konto";\nimport { db } from "./${relativePath.replace(".ts", "")}";\n\nconst alice = await createAccount({ metadata: {} }, db);\nconst bob = await createAccount({ metadata: {} }, db);\n\nawait transfer({\n  entries: [\n    { accountId: alice.id, amount: -5000n },\n    { accountId: bob.id, amount: 5000n },\n  ],\n  metadata: { invoice_id: "INV-001" },\n}, db);`));
+  log.message(
+    pc.green(`import { createAccount, transfer } from ".konto"; `) + pc.gray(`// 1. Import your strictly-typed, generated client\n`) +
+    pc.green(`import { db } from "./${relativePath.replace(".ts", "")}"; `) + pc.gray(`// 2. Import your localized ORM adapter\n\n`) +
+    pc.gray(`// 3. Create accounts. 'db' is explicitly passed to hijack your existing connection pool safely\n`) +
+    pc.green(`const alice = await createAccount({ metadata: {} }, db);\n`) +
+    pc.green(`const bob = await createAccount({ metadata: {} }, db);\n\n`) +
+    pc.gray(`// 4. Execute a mathematically flawless, double-entry transfer\n`) +
+    pc.green(`await transfer({\n`) +
+    pc.green(`  entries: [\n`) +
+    pc.green(`    { accountId: alice.id, amount: -5000n }, `) + pc.gray(`// Math uses BigInts (cents) to prevent floating-point errors\n`) +
+    pc.green(`    { accountId: bob.id, amount: 5000n },    `) + pc.gray(`// Debits and credits MUST sum to zero\n`) +
+    pc.green(`  ],\n`) +
+    pc.green(`  metadata: { invoice_id: "INV-001" },       `) + pc.gray(`// Type-safe! Required because you defined it in konto.config.ts\n`) +
+    pc.green(`}, db);`)
+  );
 }
