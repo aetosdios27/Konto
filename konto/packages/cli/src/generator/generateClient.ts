@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { LedgerSchema } from "../config";
 
-export async function generateClient(schema: LedgerSchema) {
+export async function generateClient(schema: LedgerSchema, outputPath?: string) {
   const dtsContent = `
 import {
   transfer as coreTransfer,
@@ -153,12 +153,17 @@ export async function getJournals(accountId, opts) {
     }
   }, null, 2);
 
-  const nodeModulesPath = path.resolve(process.cwd(), "node_modules");
-  if (!fs.existsSync(nodeModulesPath)) {
-    fs.mkdirSync(nodeModulesPath, { recursive: true });
+  let targetDir = "";
+  if (outputPath) {
+    targetDir = path.resolve(process.cwd(), outputPath);
+  } else {
+    const nodeModulesPath = path.resolve(process.cwd(), "node_modules");
+    if (!fs.existsSync(nodeModulesPath)) {
+      fs.mkdirSync(nodeModulesPath, { recursive: true });
+    }
+    targetDir = path.join(nodeModulesPath, ".konto");
   }
-  
-  const targetDir = path.join(nodeModulesPath, ".konto");
+
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }

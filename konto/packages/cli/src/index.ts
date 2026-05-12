@@ -16,13 +16,14 @@ cli
 
 cli
   .command("generate", "Generate a strictly typed Konto client based on konto.config.ts")
-  .action(async () => {
-    await generateCommand();
+  .option("-o, --output <dir>", "Output directory for the generated client")
+  .action(async (options) => {
+    await generateCommand(false, options);
   });
 
 cli
-  .command("approve <intentId>", "Approve and execute a staged financial intent")
-  .action(async (intentId: string) => {
+  .command("approve [intentId]", "Approve and execute a staged financial intent (or launch interactive bulk queue)")
+  .action(async (intentId?: string) => {
     await approveCommand(intentId);
   });
 

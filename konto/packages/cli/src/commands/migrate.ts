@@ -48,20 +48,29 @@ export async function migrate(
 
   const appliedList: string[] = [];
 
-  // TODO: Support --no-transaction flags for CONCURRENTLY operations.
-  // We will need it when we hit a billion rows and have to index live data without table locks.
   for (const file of pendingMigrations) {
     const fullPath = path.join(options.migrationsPath, file);
     const sqlContent = await fs.readFile(fullPath, "utf-8");
 
-    // Atomically execute patch and record into tracker
-    await db.begin(async (tx) => {
-      await tx.unsafe(sqlContent);
-      await tx.unsafe(
+    const requiresTransaction = !sqlContent.includes("-- konto:no-transaction");
+
+    if (requiresTransaction) {
+      // Atomically execute patch and record into tracker
+      await db.begin(async (tx) => {
+        await tx.unsafe(sqlContent);
+        await tx.unsafe(
+          `INSERT INTO _konto_migrations (migration_name) VALUES ($1)`,
+          [file]
+        );
+      });
+    } else {
+      // Execute without transaction scope to safely allow CONCURRENTLY operations
+      await db.unsafe(sqlContent);
+      await db.unsafe(
         `INSERT INTO _konto_migrations (migration_name) VALUES ($1)`,
         [file]
       );
-    });
+    }
     
     appliedList.push(file);
   }

@@ -5,7 +5,7 @@ import path from "path";
 import { createJiti } from "jiti";
 import { generateClient } from "../generator/generateClient";
 
-export async function generateCommand(isChained: boolean = false) {
+export async function generateCommand(isChained: boolean = false, options?: { output?: string }) {
   if (!isChained) {
     intro(pc.bgBlack(pc.white(" KONTO GENERATOR ")));
   }
@@ -43,9 +43,10 @@ export async function generateCommand(isChained: boolean = false) {
     const schema = configModule.default || configModule;
 
     s.message("Generating strictly typed client explicitly masking ledger primitives...");
-    await generateClient(schema);
+    await generateClient(schema, options?.output);
 
-    s.stop(pc.green("✔ Client generated safely into node_modules/.konto"));
+    const outStr = options?.output || "node_modules/.konto";
+    s.stop(pc.green(`✔ Client generated safely into ${outStr}`));
     log.info(pc.cyan("Import your strict client directly using:"));
     log.message(pc.green("import { transfer, hold } from '.konto';"));
 
