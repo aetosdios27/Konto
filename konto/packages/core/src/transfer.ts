@@ -99,17 +99,17 @@ export async function transfer(
           (COALESCE(s.balance, 0) + COALESCE(e.entry_sum, 0) - COALESCE(h.hold_sum, 0))::text AS balance
         FROM unnest(${debitAccountIds}::uuid[]) AS ids(id)
         LEFT JOIN LATERAL (
-          SELECT balance, snapshot_at
+          SELECT balance, entry_sequence
           FROM konto_balance_snapshots
           WHERE account_id = ids.id
-          ORDER BY snapshot_at DESC
+          ORDER BY entry_sequence DESC
           LIMIT 1
         ) s ON true
         LEFT JOIN LATERAL (
           SELECT SUM(amount) as entry_sum
           FROM konto_entries
           WHERE account_id = ids.id
-            AND (s.snapshot_at IS NULL OR created_at > s.snapshot_at)
+            AND (s.entry_sequence IS NULL OR entry_sequence > s.entry_sequence)
         ) e ON true
         LEFT JOIN LATERAL (
           SELECT SUM(amount) as hold_sum

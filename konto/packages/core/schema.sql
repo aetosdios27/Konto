@@ -26,11 +26,27 @@ CREATE INDEX IF NOT EXISTS idx_journals_account_idempotency
 -- 3. Entries (the only source of truth - append-only)
 CREATE TABLE IF NOT EXISTS konto_entries (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entry_sequence BIGINT NOT NULL UNIQUE,
   journal_id  UUID NOT NULL REFERENCES konto_journals(id) ON DELETE RESTRICT,
   account_id  UUID NOT NULL REFERENCES konto_accounts(id) ON DELETE RESTRICT,
   amount      BIGINT NOT NULL CHECK (amount != 0),   -- positive=credit, negative=debit
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE SEQUENCE konto_entry_sequence AS BIGINT;
+ALTER SEQUENCE konto_entry_sequence OWNED BY konto_entries.entry_sequence;
+
+CREATE OR REPLACE FUNCTION assign_entry_sequence_fn() RETURNS trigger AS $$
+BEGIN
+  PERFORM 1 FROM public.konto_accounts WHERE id = NEW.account_id FOR UPDATE;
+  NEW.entry_sequence := nextval('public.konto_entry_sequence');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public;
+
+CREATE TRIGGER assign_entry_sequence
+  BEFORE INSERT ON konto_entries
+  FOR EACH ROW EXECUTE FUNCTION assign_entry_sequence_fn();
 
 -- Zero-sum journal constraint
 CREATE OR REPLACE FUNCTION check_journal_balance_fn() RETURNS trigger AS $$
@@ -53,8 +69,8 @@ CREATE CONSTRAINT TRIGGER check_journal_balance
   EXECUTE FUNCTION check_journal_balance_fn();
 
 -- Critical indexes for performance
-CREATE INDEX IF NOT EXISTS idx_entries_account_created
-  ON konto_entries(account_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_entries_account_sequence
+  ON konto_entries(account_id, entry_sequence);
 
 -- 4. Holds (ephemeral double-phase escrow)
 CREATE TABLE IF NOT EXISTS konto_holds (
@@ -80,32 +96,31 @@ CREATE TABLE IF NOT EXISTS konto_balance_snapshots (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   account_id   UUID NOT NULL REFERENCES konto_accounts(id) ON DELETE RESTRICT,
   balance      BIGINT NOT NULL,
+  entry_sequence BIGINT NOT NULL CHECK (entry_sequence >= 0),
   snapshot_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_balance_snapshots_account ON konto_balance_snapshots(account_id, snapshot_at DESC);
+CREATE INDEX IF NOT EXISTS idx_balance_snapshots_account ON konto_balance_snapshots(account_id, entry_sequence DESC);
 
 -- Stored procedure for secure snapshots
 CREATE OR REPLACE FUNCTION take_snapshot(p_account_id UUID) RETURNS UUID AS $$
 DECLARE
   v_balance BIGINT;
+  v_entry_sequence BIGINT;
   v_snapshot_id UUID;
 BEGIN
-  SELECT
-    COALESCE(s.balance, 0) + COALESCE(e.entry_sum, 0) - COALESCE(h.hold_sum, 0) INTO v_balance
-  FROM konto_accounts a
-  LEFT JOIN LATERAL (
-    SELECT balance, snapshot_at FROM konto_balance_snapshots WHERE account_id = a.id ORDER BY snapshot_at DESC LIMIT 1
-  ) s ON true
-  LEFT JOIN LATERAL (
-    SELECT SUM(amount) as entry_sum FROM konto_entries WHERE account_id = a.id AND (s.snapshot_at IS NULL OR created_at > s.snapshot_at)
-  ) e ON true
-  LEFT JOIN LATERAL (
-    SELECT SUM(amount) as hold_sum FROM konto_holds WHERE account_id = a.id AND status = 'PENDING' AND (expires_at IS NULL OR NOW() <= expires_at)
-  ) h ON true
-  WHERE a.id = p_account_id;
+  PERFORM 1 FROM konto_accounts WHERE id = p_account_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Konto: account not found: %', p_account_id;
+  END IF;
 
-  INSERT INTO konto_balance_snapshots (account_id, balance) VALUES (p_account_id, v_balance) RETURNING id INTO v_snapshot_id;
+  SELECT COALESCE(SUM(amount), 0), COALESCE(MAX(entry_sequence), 0)
+    INTO v_balance, v_entry_sequence
+    FROM konto_entries WHERE account_id = p_account_id;
+
+  INSERT INTO konto_balance_snapshots (account_id, balance, entry_sequence)
+    VALUES (p_account_id, v_balance, v_entry_sequence)
+    RETURNING id INTO v_snapshot_id;
   RETURN v_snapshot_id;
 END;
 $$ LANGUAGE plpgsql;

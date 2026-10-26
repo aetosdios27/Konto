@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import postgres from "postgres";
-import {
-  PostgreSqlContainer,
-  StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
+import { createTestDatabase } from "../../core/test/database";
 import path from "path";
 import { migrate } from "../src/commands/migrate";
 import { createAccount } from "@konto-ledger/core";
@@ -20,17 +17,16 @@ import { getBalance } from "@konto-ledger/core";
  *       transfer → getBalance → verify correctness
  */
 describe("CLI End-to-End: init → migrate → transfer → getBalance", () => {
-  let container: StartedPostgreSqlContainer;
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let sql: ReturnType<typeof postgres>;
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer("postgres:16-alpine").start();
-    sql = postgres(container.getConnectionUri(), { max: 5 });
+    database = await createTestDatabase(5);
+    sql = database.sql;
   }, 120000);
 
   afterAll(async () => {
-    if (sql) await sql.end();
-    if (container) await container.stop();
+    await database?.close();
   });
 
   it("should apply all migrations and produce a schema that supports core operations", async () => {

@@ -29,7 +29,7 @@ export async function getBalance(
   const result = await sql<
     { id: string; currency: string; snapshot_balance: string; entries_sum: string; holds_sum: string }[]
   >`
-    SELECT 
+    SELECT
       a.id,
       a.currency,
       COALESCE(s.balance, 0)::text AS snapshot_balance,
@@ -37,17 +37,17 @@ export async function getBalance(
       COALESCE(h.total, 0)::text AS holds_sum
     FROM konto_accounts a
     LEFT JOIN LATERAL (
-      SELECT balance, snapshot_at 
-      FROM konto_balance_snapshots 
-      WHERE account_id = a.id 
-      ORDER BY snapshot_at DESC 
+      SELECT balance, entry_sequence
+      FROM konto_balance_snapshots
+      WHERE account_id = a.id
+      ORDER BY entry_sequence DESC
       LIMIT 1
     ) s ON true
     LEFT JOIN LATERAL (
       SELECT SUM(amount) as total
       FROM konto_entries
-      WHERE account_id = a.id 
-        AND (s.snapshot_at IS NULL OR created_at > s.snapshot_at)
+      WHERE account_id = a.id
+        AND (s.entry_sequence IS NULL OR entry_sequence > s.entry_sequence)
     ) e ON true
     LEFT JOIN LATERAL (
       SELECT SUM(amount) as total
@@ -67,7 +67,7 @@ export async function getBalance(
   const snapshotBalance = BigInt(row.snapshot_balance);
   const entriesSum = BigInt(row.entries_sum);
   const holdsSum = BigInt(row.holds_sum);
-  
+
   // Explicit logic resolving B_a = Snapshot + Sum(Entries > Snapshot) - Sum(Active Holds)
   const balance = snapshotBalance + entriesSum - holdsSum;
 
@@ -110,9 +110,9 @@ export async function getJournals(
 
   // Utilize json_agg recursively to avoid N+1, explicitly decay BigInt payload elements to TEXT inside the aggregation logic to dodge precision decay flaws.
   // Use lateral joins logically isolated to the journal batch being addressed.
-  
+
   const journals = await sql<any[]>`
-    SELECT 
+    SELECT
       j.id,
       j.description,
       j.metadata,
@@ -121,7 +121,7 @@ export async function getJournals(
       e.agg_entries as entries
     FROM konto_journals j
     JOIN LATERAL (
-      SELECT 
+      SELECT
         json_agg(
           json_build_object(
             'accountId', account_id,
