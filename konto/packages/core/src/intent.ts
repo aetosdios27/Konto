@@ -134,6 +134,7 @@ export async function executeIntent(
       case "TRANSFER": {
         const payload = intent.payload as {
           accountId: string;
+          idempotencyKey?: string;
           entries: Array<{ accountId: string; amount: string }>;
           metadata?: Record<string, unknown>;
         };
@@ -141,6 +142,7 @@ export async function executeIntent(
         // Reconstruct the transfer payload with BigInt amounts
         const transferPayload = {
           accountId: payload.accountId,
+          idempotencyKey: payload.idempotencyKey,
           entries: payload.entries.map((e) => ({
             accountId: e.accountId,
             amount: BigInt(e.amount),

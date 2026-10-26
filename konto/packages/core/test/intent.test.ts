@@ -22,6 +22,39 @@ describe("intent and caller-owned transactions", () => {
     return { alice: alice.id, bob: bob.id };
   }
 
+  for (const original of ["direct transfer", "staged intent"]) {
+    it(`rejects a staged transfer replay of a ${original} without ledger mutation`, async () => {
+      const sql = database.sql;
+      const { alice, bob } = await accounts();
+      const payload = {
+        accountId: alice,
+        idempotencyKey: crypto.randomUUID(),
+        entries: [{ accountId: alice, amount: "-100" }, { accountId: bob, amount: "100" }],
+      };
+      if (original === "direct transfer") {
+        await core.transfer(sql, {
+          ...payload,
+          entries: payload.entries.map((entry) => ({ ...entry, amount: BigInt(entry.amount) })),
+        });
+      } else {
+        const { intentId } = await core.stageIntent(sql, { intentType: "TRANSFER", payload });
+        await core.executeIntent(sql, intentId);
+      }
+      const journalsBefore = await sql`SELECT id FROM konto_journals WHERE account_id = ${alice} ORDER BY id`;
+      const entriesBefore = await sql`SELECT * FROM konto_entries WHERE account_id IN (${alice}, ${bob}) ORDER BY id`;
+      const { intentId } = await core.stageIntent(sql, { intentType: "TRANSFER", payload });
+
+      await expect(core.executeIntent(sql, intentId)).rejects.toThrow(core.KontoDuplicateTransactionError);
+
+      expect(await sql`SELECT id FROM konto_journals WHERE account_id = ${alice} ORDER BY id`).toEqual(journalsBefore);
+      expect(await sql`SELECT * FROM konto_entries WHERE account_id IN (${alice}, ${bob}) ORDER BY id`).toEqual(entriesBefore);
+      expect((await core.getBalance(sql, alice)).balance).toBe(900n);
+      expect((await core.getBalance(sql, bob)).balance).toBe(100n);
+      const [intent] = await sql`SELECT status, executed_at FROM konto_staged_intents WHERE id = ${intentId}`;
+      expect(intent).toEqual({ status: "PENDING", executed_at: null });
+    });
+  }
+
   for (const intentType of ["TRANSFER", "COMMIT_HOLD", "ROLLBACK_HOLD"] as const) {
     it(`executes ${intentType} and its status transition in one transaction`, async () => {
       const sql = database.sql;
