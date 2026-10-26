@@ -3,6 +3,8 @@ LOCK TABLE konto_accounts, konto_entries, konto_balance_snapshots IN ACCESS EXCL
 CREATE SEQUENCE konto_entry_sequence AS BIGINT;
 ALTER TABLE konto_entries ADD COLUMN entry_sequence BIGINT;
 UPDATE konto_entries SET entry_sequence = nextval('konto_entry_sequence');
+SET CONSTRAINTS check_journal_balance IMMEDIATE;
+SET CONSTRAINTS check_journal_balance DEFERRED;
 ALTER TABLE konto_entries ALTER COLUMN entry_sequence SET NOT NULL;
 ALTER TABLE konto_entries ADD UNIQUE (entry_sequence);
 ALTER SEQUENCE konto_entry_sequence OWNED BY konto_entries.entry_sequence;
