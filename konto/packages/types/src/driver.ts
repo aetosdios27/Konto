@@ -17,7 +17,7 @@ export interface KontoTransactionExecutor {
 
 export interface KontoQueryExecutor extends KontoTransactionExecutor {
   /** Scoped transaction wrapper guaranteeing commit/rollback automations */
-  begin<T>(cb: (tx: KontoQueryExecutor) => Promise<T>): Promise<T>;
+  begin<T>(cb: (tx: KontoTransactionExecutor) => Promise<T>): Promise<T>;
 }
 
 /**

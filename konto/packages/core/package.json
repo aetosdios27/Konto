@@ -38,7 +38,7 @@
   "scripts": {
     "build": "tsup src/index.ts --dts --format esm --clean",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-types.json"
   },
   "dependencies": {
     "@konto-ledger/types": "workspace:^",
