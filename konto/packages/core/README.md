@@ -43,6 +43,14 @@ await sql.begin(async (tx) => {
 ```
 
 The existing `transfer`, `commitHold`, and `rollbackHold` functions continue to
-own their transactions. Apply CLI migrations through `0008` before using the
+own their transactions. Apply CLI migrations through `0009` before using the
 sequence-based balance queries in this version. Snapshots cache posted entries;
 active holds are deducted only when calculating the available balance.
+
+The database rejects `UPDATE`, `DELETE`, and `TRUNCATE` on journals and entries,
+including statements run by the table owner. Corrections require compensating
+entries in a new journal. Application roles should have only the required grants;
+the insert trigger assigns sequences while holding the account lock using its
+owner's privileges. As with all PostgreSQL triggers, a database administrator or
+table owner with DDL access can disable or remove these protections. Restrict DDL
+access to the migration role and use a separate application role in production.
