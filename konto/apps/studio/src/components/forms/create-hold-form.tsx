@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
+import * as z from "zod/v3";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -44,7 +44,7 @@ export function CreateHoldForm({ accounts }: { accounts: AccountOption[] }) {
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema as any),
+    resolver: zodResolver(formSchema),
     defaultValues: {
       senderId: "",
       receiverId: "",
@@ -71,14 +71,13 @@ export function CreateHoldForm({ accounts }: { accounts: AccountOption[] }) {
       const ttlMs = data.ttlMinutes && parseInt(data.ttlMinutes) > 0
         ? parseInt(data.ttlMinutes) * 60 * 1000
         : undefined;
-      const expiresAt = ttlMs ? new Date(Date.now() + ttlMs) : undefined;
 
       const res = await initializeHoldAction(
         data.senderId,
         data.receiverId,
         data.amount,
         idempotencyKey,
-        expiresAt,
+        ttlMs,
       );
 
       if (res.success) {
@@ -89,14 +88,14 @@ export function CreateHoldForm({ accounts }: { accounts: AccountOption[] }) {
       } else {
         toast.error("Hold creation failed", { description: res.error });
       }
-    } catch (err: any) {
-      toast.error("An unexpected error occurred", { description: err.message });
+    } catch (err) {
+      toast.error("An unexpected error occurred", { description: err instanceof Error ? err.message : String(err) });
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  const senderId = form.watch("senderId");
+  const senderId = useWatch({ control: form.control, name: "senderId" });
   const senderCurrency = accounts.find((a) => a.id === senderId)?.currency;
 
   return (

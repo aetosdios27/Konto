@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -26,12 +27,12 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-mono">
         <header className="border-b border-border">
           <div className="container flex h-14 items-center gap-6 px-4 max-w-6xl mx-auto">
-            <a href="/" className="font-bold text-primary tracking-tight">KONTO_STUDIO</a>
+            <Link href="/" className="font-bold text-primary tracking-tight">KONTO_STUDIO</Link>
             <nav className="flex gap-4 text-sm font-medium text-muted-foreground">
-                <a href="/" className="text-sm font-medium hover:text-[#00FF41] transition-colors">Accounts</a>
-                <a href="/transfers" className="text-sm font-medium hover:text-[#00FF41] transition-colors">Transfers</a>
-                <a href="/intents" className="text-sm font-medium hover:text-[#00FF41] transition-colors">Intents</a>
-                <a href="/holds" className="text-sm font-medium hover:text-[#00FF41] transition-colors">Holds</a>
+                <Link href="/" className="text-sm font-medium hover:text-[#00FF41] transition-colors">Accounts</Link>
+                <Link href="/transfers" className="text-sm font-medium hover:text-[#00FF41] transition-colors">Transfers</Link>
+                <Link href="/intents" className="text-sm font-medium hover:text-[#00FF41] transition-colors">Intents</Link>
+                <Link href="/holds" className="text-sm font-medium hover:text-[#00FF41] transition-colors">Holds</Link>
             </nav>
           </div>
         </header>

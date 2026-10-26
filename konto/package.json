@@ -6,9 +6,10 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "check-types": "turbo run check-types",
+    "check-types": "pnpm --filter @konto-ledger/core build && pnpm -r typecheck",
     "changeset": "changeset",
-    "publish-packages": "npm install -g npm@latest && pnpm -r publish --access public"
+    "publish-packages": "npm install -g npm@latest && pnpm -r publish --access public",
+    "test": "pnpm --filter @konto-ledger/core build && pnpm -r run test --run"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",

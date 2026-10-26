@@ -7,23 +7,23 @@ import { randomUUID } from "crypto";
 
 export async function approveIntent(intentId: string) {
   try {
-    const result = await executeIntent(sql as any, intentId);
+    const result = await executeIntent(sql, intentId);
     revalidatePath("/intents");
     revalidatePath("/accounts");
     revalidatePath("/holds");
     return { success: true, journalId: result.journalId };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
 export async function rejectStagedIntent(intentId: string) {
   try {
-    await rejectIntent(sql as any, intentId);
+    await rejectIntent(sql, intentId);
     revalidatePath("/intents");
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -32,7 +32,7 @@ export async function rejectStagedIntent(intentId: string) {
 export async function createAccountAction(name: string, currency: string, accountType: string, initialBalance?: string) {
   try {
     const id = randomUUID();
-    await (sql as any)`
+    await sql`
       INSERT INTO konto_accounts (id, name, currency, account_type)
       VALUES (${id}, ${name}, ${currency}, ${accountType})
     `;
@@ -41,13 +41,13 @@ export async function createAccountAction(name: string, currency: string, accoun
       const GENESIS_ACCOUNT_NAME = `__konto_genesis_${currency.toUpperCase()}__`;
       
       const genesisId = randomUUID();
-      await (sql as any)`
+      await sql`
         INSERT INTO konto_accounts (id, name, currency, account_type)
         VALUES (${genesisId}, ${GENESIS_ACCOUNT_NAME}, ${currency}, 'LIABILITY')
         ON CONFLICT (name) DO NOTHING
       `;
 
-      const genesisQuery = await (sql as any)`
+      const genesisQuery = await sql`
         SELECT id FROM konto_accounts WHERE name = ${GENESIS_ACCOUNT_NAME}
       `;
       const actualGenesisId = genesisQuery[0].id;
@@ -56,15 +56,15 @@ export async function createAccountAction(name: string, currency: string, accoun
         { accountId: actualGenesisId, amount: -BigInt(initialBalance) },
         { accountId: id, amount: BigInt(initialBalance) }
       ];
-      await transfer(sql as any, { entries, idempotencyKey: randomUUID() });
+      await transfer(sql, { entries, idempotencyKey: randomUUID() });
     }
 
     revalidatePath("/");
     revalidatePath("/accounts");
     revalidatePath("/transfers");
     return { success: true, id };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -74,13 +74,13 @@ export async function executeDirectTransferAction(
 ) {
   try {
     const entriesWithBigInt = entries.map(e => ({ accountId: e.accountId, amount: BigInt(e.amount) }));
-    await transfer(sql as any, { entries: entriesWithBigInt, idempotencyKey });
+    await transfer(sql, { entries: entriesWithBigInt, idempotencyKey });
     revalidatePath("/");
     revalidatePath("/accounts");
     revalidatePath("/transfers");
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -89,14 +89,14 @@ export async function initializeHoldAction(
   recipientId: string,
   amount: string,
   idempotencyKey: string,
-  expiresAt?: Date,
+  ttlMs?: number,
 ) {
   try {
-    await hold(sql as any, {
+    await hold(sql, {
       accountId,
       recipientId,
       amount: BigInt(amount),
-      expiresAt,
+      ttlMs,
       idempotencyKey,
     });
     revalidatePath("/");
@@ -104,33 +104,33 @@ export async function initializeHoldAction(
     revalidatePath("/holds");
     revalidatePath("/transfers");
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
 export async function commitHoldAction(holdId: string) {
   try {
-    await commitHold(sql as any, holdId);
+    await commitHold(sql, holdId);
     revalidatePath("/");
     revalidatePath("/accounts");
     revalidatePath("/holds");
     revalidatePath("/transfers");
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
 export async function rollbackHoldAction(holdId: string) {
   try {
-    await rollbackHold(sql as any, holdId);
+    await rollbackHold(sql, holdId);
     revalidatePath("/");
     revalidatePath("/accounts");
     revalidatePath("/holds");
     revalidatePath("/transfers");
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

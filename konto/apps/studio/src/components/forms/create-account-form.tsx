@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
+import * as z from "zod/v3";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -40,7 +40,7 @@ export function CreateAccountForm({ onSuccess }: { onSuccess?: () => void }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema as any),
+    resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
       currency: "USD",
@@ -62,8 +62,8 @@ export function CreateAccountForm({ onSuccess }: { onSuccess?: () => void }) {
       } else {
         toast.error("Failed to create account", { description: res.error });
       }
-    } catch (err: any) {
-      toast.error("An unexpected error occurred", { description: err.message });
+    } catch (err) {
+      toast.error("An unexpected error occurred", { description: err instanceof Error ? err.message : String(err) });
     } finally {
       setIsSubmitting(false);
     }
