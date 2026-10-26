@@ -1,9 +1,9 @@
-import type { KontoQueryExecutor } from "@konto-ledger/types";
+import type { KontoTransactionExecutor } from "@konto-ledger/types";
 import { KontoAccountNotFoundError } from "./errors";
 
 // Task 1: Fetch Account
 export async function getAccount(
-  sql: KontoQueryExecutor,
+  sql: KontoTransactionExecutor,
   accountId: string,
 ): Promise<{ id: string; name: string; currency: string } | null> {
   const result = await sql<{ id: string; name: string; currency: string }[]>`
@@ -22,7 +22,7 @@ export async function getAccount(
 
 // Task 2: Fetch Secure Liquid Balance
 export async function getBalance(
-  sql: KontoQueryExecutor,
+  sql: KontoTransactionExecutor,
   accountId: string,
 ): Promise<{ accountId: string; balance: bigint; currency: string }> {
   // Join to get accounts, explicitly convert sums to TEXT mathematically checking for BigInt float decay boundaries
@@ -102,7 +102,7 @@ export interface JournalWithEntries {
 }
 
 export async function getJournals(
-  sql: KontoQueryExecutor,
+  sql: KontoTransactionExecutor,
   accountId: string,
   options: GetJournalsOptions = {},
 ): Promise<JournalWithEntries[]> {

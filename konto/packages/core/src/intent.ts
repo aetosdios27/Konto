@@ -10,8 +10,8 @@
  */
 
 import type { KontoQueryExecutor } from "@konto-ledger/types";
-import { transfer } from "./transfer";
-import { commitHold, rollbackHold } from "./hold";
+import { transferInTx } from "./transfer";
+import { commitHoldInTx, rollbackHoldInTx } from "./hold";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -147,7 +147,7 @@ export async function executeIntent(
           metadata: payload.metadata,
         };
 
-        const { journalId } = await transfer(tx, transferPayload);
+        const { journalId } = await transferInTx(tx, transferPayload);
         result = { journalId, success: true };
         break;
       }
@@ -158,14 +158,14 @@ export async function executeIntent(
           metadata?: Record<string, unknown>;
         };
 
-        const { journalId } = await commitHold(tx, payload.holdId, payload.metadata);
+        const { journalId } = await commitHoldInTx(tx, payload.holdId, payload.metadata);
         result = { journalId, success: true };
         break;
       }
 
       case "ROLLBACK_HOLD": {
         const payload = intent.payload as { holdId: string };
-        await rollbackHold(tx, payload.holdId);
+        await rollbackHoldInTx(tx, payload.holdId);
         result = { success: true };
         break;
       }
