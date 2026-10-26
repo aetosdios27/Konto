@@ -49,6 +49,24 @@ describe.each(["schema", "migrations"])("database immutability (%s)", (source) =
     return { alice: alice.id, bank: bank.id, journalId: journal.id };
   }
 
+  it("rejects unbalanced posting when a restricted role shadows entries with a temporary table", async () => {
+    const { alice } = await fundedJournal();
+    const journalId = randomUUID();
+    const [privileges] = await appSql`
+      SELECT has_database_privilege(current_user, current_database(), 'TEMP') AS temp,
+        has_table_privilege(current_user, 'public.konto_entries', 'SELECT,INSERT') AS posting,
+        has_schema_privilege(current_user, 'public', 'CREATE') AS ddl
+    `;
+    expect(privileges).toEqual({ temp: true, posting: true, ddl: false });
+    await expect(appSql.begin(async (tx) => {
+      await tx`CREATE TEMP TABLE konto_entries (journal_id UUID, amount BIGINT) ON COMMIT DROP`;
+      await tx`INSERT INTO public.konto_journals (id, account_id) VALUES (${journalId}, ${alice})`;
+      await tx`INSERT INTO public.konto_entries (journal_id, account_id, amount) VALUES (${journalId}, ${alice}, 100)`;
+    })).rejects.toThrow(/unbalanced/i);
+    expect(await ownerSql`SELECT id FROM public.konto_journals WHERE id = ${journalId}`).toHaveLength(0);
+    expect(await ownerSql`SELECT id FROM public.konto_entries WHERE journal_id = ${journalId}`).toHaveLength(0);
+  });
+
   it("runs as non-superuser roles and permits balanced append-only posting with INSERT/SELECT", async () => {
     const { alice, bank } = await fundedJournal();
     for (const sql of [ownerSql, appSql]) {

@@ -14,7 +14,7 @@ BEGIN
 
   FOREACH affected_journal IN ARRAY affected_journals LOOP
     SELECT COALESCE(SUM(amount), 0) INTO journal_sum
-      FROM konto_entries WHERE journal_id = affected_journal;
+      FROM public.konto_entries WHERE journal_id = affected_journal;
     IF journal_sum <> 0 THEN
       RAISE EXCEPTION 'Konto: Journal % is unbalanced (sum = %)', affected_journal, journal_sum;
     END IF;
