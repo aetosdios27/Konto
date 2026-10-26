@@ -6,6 +6,7 @@ import { cac } from "cac";
 import { initCommand } from "./commands/init";
 import { generateCommand } from "./commands/generate";
 import { approveCommand } from "./commands/approve";
+import type { KontoQueryExecutor } from "@konto-ledger/types";
 import { migrate } from "./commands/migrate";
 
 export { defineLedger } from "./config";
@@ -36,16 +37,16 @@ cli
       ? path.resolve(process.cwd(), options.migrations)
       : path.resolve(__dirname, "../migrations");
     try {
-      const { applied } = await migrate(sql as any, { migrationsPath });
+      const { applied } = await migrate(sql as unknown as KontoQueryExecutor, { migrationsPath });
       await sql.end();
       if (applied.length > 0) {
         console.log(`Applied ${applied.length} migration(s): ${applied.join(", ")}`);
       } else {
         console.log("No pending migrations.");
       }
-    } catch (err: any) {
+    } catch (err) {
       await sql.end();
-      console.error(`Migration failed: ${err.message ?? err}`);
+      console.error(`Migration failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
   });
