@@ -1,5 +1,6 @@
 import "dotenv/config";
 import path from "path";
+import { fileURLToPath } from "url";
 import postgres from "postgres";
 import { cac } from "cac";
 import { initCommand } from "./commands/init";
@@ -9,6 +10,9 @@ import { migrate } from "./commands/migrate";
 
 export { defineLedger } from "./config";
 export { migrate } from "./commands/migrate";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const cli = cac("konto");
 
