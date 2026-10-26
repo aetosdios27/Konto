@@ -1,0 +1,14 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../.generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model KontoAccount {
+  id String @id @db.Uuid
+
+  @@map("konto_accounts")
+}

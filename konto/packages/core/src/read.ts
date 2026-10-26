@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { jsonSchema } from "./schema";
 import type { KontoTransactionExecutor } from "@konto-ledger/types";
 import { KontoAccountNotFoundError } from "./errors";
 
@@ -95,7 +97,7 @@ export interface JournalEntry {
 export interface JournalWithEntries {
   id: string;
   description: string | null;
-  metadata: any | null;
+  metadata: z.infer<typeof jsonSchema>;
   idempotencyKey: string | null;
   createdAt: Date;
   entries: JournalEntry[];
@@ -107,11 +109,13 @@ export async function getJournals(
   options: GetJournalsOptions = {},
 ): Promise<JournalWithEntries[]> {
   const limit = Math.min(Math.max(1, options.limit ?? 50), 500);
+  const cursorId = options.cursorId && options.cursorDate ? options.cursorId : null;
+  const cursorDate = cursorId ? options.cursorDate : null;
 
   // Utilize json_agg recursively to avoid N+1, explicitly decay BigInt payload elements to TEXT inside the aggregation logic to dodge precision decay flaws.
   // Use lateral joins logically isolated to the journal batch being addressed.
 
-  const journals = await sql<any[]>`
+  const journals = await sql<unknown[]>`
     SELECT
       j.id,
       j.description,
@@ -134,24 +138,35 @@ export async function getJournals(
     WHERE j.id IN (
       SELECT journal_id FROM konto_entries WHERE account_id = ${accountId}
     )
-    ${options.from ? sql`AND j.created_at >= ${options.from}` : sql``}
-    ${options.to ? sql`AND j.created_at <= ${options.to}` : sql``}
-    ${
-      options.cursorId && options.cursorDate
-        ? sql`AND (j.created_at, j.id) < (${options.cursorDate}, ${options.cursorId}::uuid)`
-        : sql``
-    }
+    AND (${options.from ?? null}::timestamptz IS NULL OR j.created_at >= ${options.from ?? null}::timestamptz)
+    AND (${options.to ?? null}::timestamptz IS NULL OR j.created_at <= ${options.to ?? null}::timestamptz)
+    AND (
+      ${cursorId}::uuid IS NULL
+      OR (j.created_at, j.id) < (${cursorDate ?? null}::timestamptz, ${cursorId}::uuid)
+    )
     ORDER BY j.created_at DESC, j.id DESC
     LIMIT ${limit}
   `;
 
-  return journals.map((j) => ({
+  const rows = z.array(z.object({
+    id: z.string().uuid(),
+    description: z.string().nullable(),
+    metadata: jsonSchema,
+    idempotency_key: z.string().nullable(),
+    created_at: z.coerce.date(),
+    entries: z.array(z.object({
+      accountId: z.string().uuid(),
+      amount: z.string().regex(/^-?\d+$/),
+    })),
+  })).parse(journals);
+
+  return rows.map((j) => ({
     id: j.id,
     description: j.description,
     metadata: j.metadata,
     idempotencyKey: j.idempotency_key,
     createdAt: j.created_at,
-    entries: j.entries.map((ent: any) => ({
+    entries: j.entries.map((ent) => ({
       accountId: ent.accountId,
       amount: BigInt(ent.amount),
     })),
