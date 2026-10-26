@@ -1,10 +1,19 @@
 import "dotenv/config";
+import path from "path";
+import { fileURLToPath } from "url";
+import postgres from "postgres";
 import { cac } from "cac";
 import { initCommand } from "./commands/init";
 import { generateCommand } from "./commands/generate";
 import { approveCommand } from "./commands/approve";
+import type { KontoQueryExecutor } from "@konto-ledger/types";
+import { migrate } from "./commands/migrate";
 
 export { defineLedger } from "./config";
+export { migrate } from "./commands/migrate";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const cli = cac("konto");
 
@@ -12,6 +21,34 @@ cli
   .command("init", "Inject the Konto ledger schema into your PostgreSQL database")
   .action(async () => {
     await initCommand();
+  });
+
+cli
+  .command("migrate", "Apply pending schema migrations to your PostgreSQL database")
+  .option("--migrations <dir>", "Path to migrations directory")
+  .action(async (options: { migrations?: string } = {}) => {
+    const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+    if (!dbUrl) {
+      console.error("DATABASE_URL or POSTGRES_URL is required to run migrations.");
+      process.exit(1);
+    }
+    const sql = postgres(dbUrl, { max: 1, idle_timeout: 1 });
+    const migrationsPath = options.migrations
+      ? path.resolve(process.cwd(), options.migrations)
+      : path.resolve(__dirname, "../migrations");
+    try {
+      const { applied } = await migrate(sql as unknown as KontoQueryExecutor, { migrationsPath });
+      await sql.end();
+      if (applied.length > 0) {
+        console.log(`Applied ${applied.length} migration(s): ${applied.join(", ")}`);
+      } else {
+        console.log("No pending migrations.");
+      }
+    } catch (err) {
+      await sql.end();
+      console.error(`Migration failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
   });
 
 cli
@@ -28,6 +65,6 @@ cli
   });
 
 cli.help();
-cli.version("0.1.0");
+cli.version("0.2.0");
 
 cli.parse();

@@ -1,9 +1,13 @@
+import { fileURLToPath } from "url";
 import { intro, outro, spinner, text, select, confirm, isCancel, log } from "@clack/prompts";
 import pc from "picocolors";
 import postgres from "postgres";
 import fs from "fs";
 import path from "path";
 import { generateCommand } from "./generate";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export async function initCommand() {
   intro(pc.bgBlack(pc.white(" KONTO ")));
