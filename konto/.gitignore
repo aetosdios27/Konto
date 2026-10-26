@@ -37,3 +37,6 @@ yarn-error.log*
 .DS_Store
 *.pem
 docs/phase_2_upgrade.md
+
+packages/adapters/test/.generated/
+.yen6-results/

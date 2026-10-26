@@ -9,7 +9,6 @@ export function HoldCountdown({ expiresAt }: { expiresAt: string | null }) {
   
   useEffect(() => {
     if (!expiresAt) {
-      setRemaining("No expiry");
       return;
     }
     
@@ -34,10 +33,15 @@ export function HoldCountdown({ expiresAt }: { expiresAt: string | null }) {
       else setRemaining(`${secs}s`);
     };
 
-    update();
+    const initial = setTimeout(update, 0);
     const id = setInterval(update, 1000);
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(id);
+    };
   }, [expiresAt]);
+
+  if (!expiresAt) return <span className="text-zinc-400 font-mono">No expiry</span>;
 
   if (isExpired) {
     return <span className="text-muted-foreground font-mono">Expired</span>;

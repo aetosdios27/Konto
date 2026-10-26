@@ -33,3 +33,18 @@ export const db = createPrismaAdapter(prisma);
 For the full documentation and setup guide, please visit the main repository:
 
 **[GitHub: aetosdios27/Konto](https://github.com/aetosdios27/Konto)**
+
+## PostgreSQL integration tests
+
+`pnpm --filter @konto-ledger/adapters test --run` generates a test-only Prisma
+client and tests Prisma with its pg driver, Drizzle with pg and postgres.js, Neon,
+and Vercel against PostgreSQL 16. The serverless drivers use a local WebSocket TCP
+relay to the same database, so these tests exercise real PostgreSQL transactions
+without requiring cloud credentials. Supabase remains unsupported and is excluded.
+Set `KONTO_TEST_DATABASE_URL` as described in `CONTRIBUTING.md` to reuse an existing
+server; every adapter still gets a separate throwaway database.
+
+Neon requires `createNeonAdapter(new Pool({ connectionString }))` from
+`@neondatabase/serverless`. The HTTP `neon()` batch client cannot provide the
+interactive transactions required for ledger mutations. The caller owns the pool
+and must close it when done.

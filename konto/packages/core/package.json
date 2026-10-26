@@ -38,7 +38,7 @@
   "scripts": {
     "build": "tsup src/index.ts --dts --format esm --clean",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test-types.json"
   },
   "dependencies": {
     "@konto-ledger/types": "workspace:^",
@@ -48,6 +48,7 @@
     "@testcontainers/postgresql": "^11.14.0",
     "@types/node": "^22",
     "@types/uuid": "^11.0.0",
+    "fast-check": "^4.3.0",
     "testcontainers": "^11.14.0",
     "tsup": "^8.3.0",
     "typescript": "^5.6.0",

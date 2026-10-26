@@ -27,12 +27,13 @@ export default async function IntentsPage() {
     {
       id: string;
       intent_type: string;
-      payload: any;
+      payload: unknown;
       created_at: Date;
       expires_at: Date | null;
+      remaining_ms: string | null;
     }[]
   >`
-    SELECT id, intent_type, payload, created_at, expires_at
+    SELECT id, intent_type, payload, created_at, expires_at, (EXTRACT(EPOCH FROM (expires_at - NOW())) * 1000)::text AS remaining_ms
     FROM konto_staged_intents
     WHERE status = 'PENDING'
     ORDER BY created_at ASC
@@ -44,7 +45,7 @@ export default async function IntentsPage() {
       id: string;
       intent_type: string;
       status: string;
-      payload: any;
+      payload: unknown;
       created_at: Date;
       executed_at: Date | null;
     }[]
@@ -82,13 +83,13 @@ export default async function IntentsPage() {
               {pending.map((intent) => {
                 let summary = "{}";
                 try {
-                  summary = JSON.stringify(intent.payload);
+                  summary = JSON.stringify(intent.payload) ?? "{}";
                   if (summary.length > 80) summary = summary.substring(0, 80) + "...";
-                } catch (e) {}
+                } catch {}
 
                 let hoursLeft = null;
                 if (intent.expires_at) {
-                  const ms = intent.expires_at.getTime() - Date.now();
+                  const ms = Number(intent.remaining_ms);
                   hoursLeft = Math.max(0, Math.round(ms / (1000 * 60 * 60) * 10) / 10);
                 }
 
@@ -153,9 +154,9 @@ export default async function IntentsPage() {
               {resolved.map((intent) => {
                 let summary = "{}";
                 try {
-                  summary = JSON.stringify(intent.payload);
+                  summary = JSON.stringify(intent.payload) ?? "{}";
                   if (summary.length > 80) summary = summary.substring(0, 80) + "...";
-                } catch (e) {}
+                } catch {}
 
                 let statusColor = "bg-muted text-muted-foreground";
                 if (intent.status === "EXECUTED") statusColor = "bg-green-900 text-green-100 border-green-700";

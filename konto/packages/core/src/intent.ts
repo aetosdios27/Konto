@@ -10,8 +10,8 @@
  */
 
 import type { KontoQueryExecutor } from "@konto-ledger/types";
-import { transfer } from "./transfer";
-import { commitHold, rollbackHold } from "./hold";
+import { transferInTx } from "./transfer";
+import { commitHoldInTx, rollbackHoldInTx } from "./hold";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ export async function executeIntent(
       intent_type: string;
       payload: Record<string, unknown>;
       status: string;
-      expires_at: Date | null;
+      expires_at: Date | string | null;
     }[]>`
       SELECT id, intent_type, payload, status, expires_at
       FROM konto_staged_intents
@@ -103,13 +103,14 @@ export async function executeIntent(
     }
 
     const intent = intentRows[0]!;
+    const expiresAt = intent.expires_at === null ? null : new Date(intent.expires_at);
 
     // Check expiration before status — an expired PENDING intent should be
     // transitioned to EXPIRED, not treated as a normal PENDING.
     if (
       intent.status === "PENDING" &&
-      intent.expires_at &&
-      new Date() > intent.expires_at
+      expiresAt &&
+      new Date() > expiresAt
     ) {
       await tx`
         UPDATE konto_staged_intents
@@ -117,7 +118,7 @@ export async function executeIntent(
         WHERE id = ${intentId}
       `;
       throw new Error(
-        `konto: staged intent ${intentId} has expired (expired at ${intent.expires_at.toISOString()}).`,
+        `konto: staged intent ${intentId} has expired (expired at ${expiresAt.toISOString()}).`,
       );
     }
 
@@ -133,6 +134,7 @@ export async function executeIntent(
       case "TRANSFER": {
         const payload = intent.payload as {
           accountId: string;
+          idempotencyKey?: string;
           entries: Array<{ accountId: string; amount: string }>;
           metadata?: Record<string, unknown>;
         };
@@ -140,6 +142,7 @@ export async function executeIntent(
         // Reconstruct the transfer payload with BigInt amounts
         const transferPayload = {
           accountId: payload.accountId,
+          idempotencyKey: payload.idempotencyKey,
           entries: payload.entries.map((e) => ({
             accountId: e.accountId,
             amount: BigInt(e.amount),
@@ -147,7 +150,7 @@ export async function executeIntent(
           metadata: payload.metadata,
         };
 
-        const { journalId } = await transfer(tx, transferPayload);
+        const { journalId } = await transferInTx(tx, transferPayload);
         result = { journalId, success: true };
         break;
       }
@@ -158,14 +161,14 @@ export async function executeIntent(
           metadata?: Record<string, unknown>;
         };
 
-        const { journalId } = await commitHold(tx, payload.holdId, payload.metadata);
+        const { journalId } = await commitHoldInTx(tx, payload.holdId, payload.metadata);
         result = { journalId, success: true };
         break;
       }
 
       case "ROLLBACK_HOLD": {
         const payload = intent.payload as { holdId: string };
-        await rollbackHold(tx, payload.holdId);
+        await rollbackHoldInTx(tx, payload.holdId);
         result = { success: true };
         break;
       }
@@ -236,8 +239,8 @@ export async function getPendingIntents(
     idempotencyKey: r.idempotency_key,
     payload: r.payload,
     status: r.status,
-    createdAt: r.created_at,
-    executedAt: r.executed_at,
-    expiresAt: r.expires_at,
+    createdAt: new Date(r.created_at),
+    executedAt: r.executed_at === null ? null : new Date(r.executed_at),
+    expiresAt: r.expires_at === null ? null : new Date(r.expires_at),
   }));
 }

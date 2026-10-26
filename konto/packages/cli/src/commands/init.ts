@@ -95,7 +95,7 @@ export async function initCommand() {
   } else if (driver === "vercel") {
     boilerplate = `import { createVercelAdapter } from "@konto-ledger/adapters/vercel";\n\n// Automatically uses process.env.POSTGRES_URL\nexport const db = createVercelAdapter();\n`;
   } else if (driver === "neon") {
-    boilerplate = `import { neon } from "@neondatabase/serverless";\nimport { createNeonAdapter } from "@konto-ledger/adapters/neon";\n\nconst sql = neon(process.env.DATABASE_URL!);\nexport const db = createNeonAdapter(sql);\n`;
+    boilerplate = `import { Pool } from "@neondatabase/serverless";\nimport { createNeonAdapter } from "@konto-ledger/adapters/neon";\n\nconst sql = new Pool({ connectionString: process.env.DATABASE_URL! });\nexport const db = createNeonAdapter(sql);\n`;
   } else if (driver === "supabase") {
     boilerplate = `import { createSupabaseAdapter } from "@konto-ledger/adapters/supabase";\n\nexport const db = createSupabaseAdapter(process.env.DATABASE_URL!);\n`;
   } else {

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function TransfersPage() {
   // Fetch all accounts and their liquid balances
   // We use the same LATERAL JOIN pattern from the accounts page to get accurate balances
-  const accountsRows = await sql`
+  const accountsRows = await sql<{ id: string; name: string; currency: string; total_entries: string; total_holds: string }[]>`
     SELECT 
       a.id,
       a.name,
@@ -32,7 +32,7 @@ export default async function TransfersPage() {
     ORDER BY a.created_at DESC
   `;
 
-  const accounts = accountsRows.map((r: any) => {
+  const accounts = accountsRows.map((r) => {
     const balance = BigInt(r.total_entries) - BigInt(r.total_holds);
     return {
       id: r.id,
@@ -43,7 +43,7 @@ export default async function TransfersPage() {
   });
 
   // Fetch recent journals (across all accounts)
-  const recentJournals = await sql`
+  const recentJournals = await sql<{ id: string; created_at: Date; description: string | null; legs: { account_id: string; amount: string }[] }[]>`
     SELECT 
       j.id, 
       j.created_at,
@@ -80,7 +80,7 @@ export default async function TransfersPage() {
             {recentJournals.length === 0 ? (
               <p className="text-sm text-muted-foreground">No recent transfers found.</p>
             ) : (
-              recentJournals.map((j: any) => (
+              recentJournals.map((j) => (
                 <Card key={j.id} className="rounded-none border-border bg-card/50">
                   <CardHeader className="py-3 px-4">
                     <div className="flex justify-between items-center">
@@ -98,7 +98,7 @@ export default async function TransfersPage() {
                   <Separator />
                   <CardContent className="py-3 px-4">
                     <div className="space-y-1">
-                      {j.legs.map((leg: any, idx: number) => {
+                      {j.legs.map((leg, idx) => {
                         const isCredit = BigInt(leg.amount) > 0n;
                         return (
                           <div key={idx} className="flex justify-between text-xs font-mono">

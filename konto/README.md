@@ -162,9 +162,9 @@ npm install @konto-ledger/adapters @neondatabase/serverless
 
 ```typescript
 import { createKontoClient } from '@konto-ledger/adapters/neon';
-import { neon } from '@neondatabase/serverless';
+import { Pool } from '@neondatabase/serverless';
 
-const konto = createKontoClient(neon(process.env.DATABASE_URL));
+const konto = createKontoClient(new Pool({ connectionString: process.env.DATABASE_URL }));
 ```
 
 ### Supabase ⚠️

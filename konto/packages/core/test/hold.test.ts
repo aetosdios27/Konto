@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import postgres from "postgres";
-import {
-  PostgreSqlContainer,
-  StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
+import { createTestDatabase } from "./database";
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs";
 import * as path from "path";
@@ -13,12 +10,12 @@ import { KontoInsufficientFundsError } from "../src/errors";
 import { getBalance } from "../src/read";
 
 describe("Konto Escrow Engine - Pathological Benchmark", () => {
-  let container: StartedPostgreSqlContainer;
+  let database: Awaited<ReturnType<typeof createTestDatabase>>;
   let sql: ReturnType<typeof postgres>;
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer("postgres:16-alpine").start();
-    sql = postgres(container.getConnectionUri(), { max: 100 }); // Increase connection pool for stress test
+    database = await createTestDatabase(20);
+    sql = database.sql;
 
     const schemaPath = path.resolve(__dirname, "../schema.sql");
     const schemaSql = fs.readFileSync(schemaPath, "utf-8");
@@ -28,8 +25,7 @@ describe("Konto Escrow Engine - Pathological Benchmark", () => {
   }, 120000);
 
   afterAll(async () => {
-    if (sql) await sql.end();
-    if (container) await container.stop();
+    await database?.close();
   });
 
   async function createFundedAccounts(startingBalance: bigint = 1000n) {

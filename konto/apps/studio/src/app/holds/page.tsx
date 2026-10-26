@@ -58,7 +58,7 @@ export default async function HoldsPage() {
   `;
 
   // Fetch accounts for the "Create Hold" form
-  const accountsRows = await sql`
+  const accountsRows = await sql<{ id: string; name: string; currency: string; total_entries: string; total_holds: string }[]>`
     SELECT 
       a.id,
       a.name,
@@ -81,7 +81,7 @@ export default async function HoldsPage() {
     ORDER BY a.created_at DESC
   `;
 
-  const accounts = accountsRows.map((r: any) => {
+  const accounts = accountsRows.map((r) => {
     const balance = BigInt(r.total_entries) - BigInt(r.total_holds);
     return {
       id: r.id,

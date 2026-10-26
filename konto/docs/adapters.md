@@ -139,7 +139,7 @@ function createVercelAdapter(connectionString?: string): KontoQueryExecutor
 
 **Status: Production-ready**
 
-Wraps the `neon()` HTTP client from `@neondatabase/serverless`. This is the correct choice for Neon-hosted databases and serverless/edge runtimes.
+Wraps the WebSocket `Pool` from `@neondatabase/serverless` to support interactive ledger transactions. The HTTP `neon()` client only supports batched transactions and cannot safely execute Konto mutations.
 
 ### Install
 
@@ -151,9 +151,9 @@ npm install @konto-ledger/adapters @neondatabase/serverless
 
 ```typescript
 import { createKontoClient } from '@konto-ledger/adapters/neon';
-import { neon } from '@neondatabase/serverless';
+import { Pool } from '@neondatabase/serverless';
 
-const konto = createKontoClient(neon(process.env.DATABASE_URL));
+const konto = createKontoClient(new Pool({ connectionString: process.env.DATABASE_URL }));
 
 // Use directly with @konto-ledger/core:
 import { transfer, getBalance } from '@konto-ledger/core';
@@ -163,11 +163,11 @@ const result = await transfer(konto, { entries: [...] });
 ### API
 
 ```typescript
-function createKontoClient(sql: ReturnType<typeof neon>): KontoQueryExecutor
+function createKontoClient(pool: Pool): KontoQueryExecutor
 ```
 
-- Accepts a `neon()` client directly. Do not pass a connection string — instantiate the client yourself and pass it in.
-- Transactions: delegates to `client.transaction()` — Neon's native transaction wrapper.
+- Pass a `Pool` instance and close it with `pool.end()` when the application shuts down.
+- Transactions acquire one pool connection for `BEGIN`, every query, and `COMMIT` or `ROLLBACK`. Use the core in-transaction APIs when composing mutations.
 - The adapter does **not** import `@neondatabase/serverless` directly; the caller provides the client, keeping the dependency truly optional.
 
 ---

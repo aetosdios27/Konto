@@ -56,7 +56,7 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts src/vercel.ts src/neon.ts src/supabase.ts src/prisma.ts src/drizzle.ts --dts --format esm --clean",
-    "test": "vitest",
+    "test": "prisma generate --schema test/prisma/schema.prisma && vitest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -87,11 +87,18 @@
     }
   },
   "devDependencies": {
+    "@konto-ledger/core": "workspace:^",
+    "@prisma/adapter-pg": "7.8.0",
     "@prisma/client": "^7.8.0",
     "@types/node": "^22",
+    "@types/pg": "^8.15.0",
+    "@types/ws": "^8.18.0",
     "drizzle-orm": "^0.45.2",
+    "pg": "^8.16.0",
+    "prisma": "7.8.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.2",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "ws": "^8.20.0"
   }
 }

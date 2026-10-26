@@ -45,15 +45,15 @@ async function runSnapshotCycle(): Promise<void> {
       COUNT(e.id)::text AS new_entries
     FROM konto_accounts a
     LEFT JOIN LATERAL (
-      SELECT snapshot_at
+      SELECT entry_sequence
       FROM konto_balance_snapshots
       WHERE account_id = a.id
-      ORDER BY snapshot_at DESC
+      ORDER BY entry_sequence DESC
       LIMIT 1
     ) s ON true
     INNER JOIN konto_entries e
       ON e.account_id = a.id
-      AND (s.snapshot_at IS NULL OR e.created_at > s.snapshot_at)
+      AND (s.entry_sequence IS NULL OR e.entry_sequence > s.entry_sequence)
     GROUP BY a.id
     HAVING COUNT(e.id) > ${THRESHOLD}
   `;

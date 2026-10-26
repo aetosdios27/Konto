@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
+import * as z from "zod/v3";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -65,7 +65,7 @@ export function DirectTransferForm({ accounts }: { accounts: AccountOption[] }) 
   type FormValues = z.infer<typeof formSchema>;
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema as any),
+    resolver: zodResolver(formSchema),
     defaultValues: {
       senderId: "",
       receiverId: "",
@@ -91,15 +91,15 @@ export function DirectTransferForm({ accounts }: { accounts: AccountOption[] }) 
       } else {
         toast.error("Transfer failed", { description: res.error });
       }
-    } catch (err: any) {
-      toast.error("An unexpected error occurred", { description: err.message });
+    } catch (err) {
+      toast.error("An unexpected error occurred", { description: err instanceof Error ? err.message : String(err) });
     } finally {
       setIsSubmitting(false);
     }
   }
 
   // Filter out the sender from the receiver options to improve UX
-  const senderId = form.watch("senderId");
+  const senderId = useWatch({ control: form.control, name: "senderId" });
   const senderCurrency = accounts.find((a) => a.id === senderId)?.currency;
 
   return (

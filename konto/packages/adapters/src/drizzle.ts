@@ -5,16 +5,19 @@ import { sql, SQL } from "drizzle-orm";
  * Converts a raw Postgres query with $1, $2 parameters into a Drizzle SQL AST object.
  */
 function buildDrizzleSql(query: string, params: any[] = []): SQL {
-  const parts = query.split(/\$\d+/);
+  const parts = query.split(/\$([1-9]\d*)/);
   const sqlChunks: SQL[] = [];
   
   for (let i = 0; i < parts.length; i++) {
-    sqlChunks.push(sql.raw(parts[i]));
-    if (i < params.length) {
-      sqlChunks.push(sql`${params[i]}`);
+    if (i % 2 === 0) {
+      sqlChunks.push(sql.raw(parts[i]!));
+    } else {
+      const value = params[Number(parts[i]) - 1];
+      const parameter = value instanceof Date ? value.toISOString() : typeof value === "bigint" ? value.toString() : value;
+      sqlChunks.push(sql`${sql.param(parameter)}`);
     }
   }
-  
+
   return sql.join(sqlChunks, sql.raw(""));
 }
 
