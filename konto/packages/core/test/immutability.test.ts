@@ -73,8 +73,8 @@ describe.each(["schema", "migrations"])("database immutability (%s)", (source) =
               : `UPDATE konto_journals SET description = 'rewritten' WHERE id = $1`
             : operation === "DELETE"
               ? `DELETE FROM ${table} WHERE ${table === "konto_entries" ? "journal_id" : "id"} = $1`
-              : `TRUNCATE konto_entries, konto_journals`;
-          await expect(sql.unsafe(statement, operation === "TRUNCATE" ? [] : [journalId])).rejects.toThrow(role === "owner" ? /append.only/i : /permission denied/i);
+              : `TRUNCATE ${table} CASCADE`;
+          await expect(sql.unsafe(statement, operation === "TRUNCATE" ? [] : [journalId])).rejects.toThrow(role === "owner" ? new RegExp(`${table} is append-only`) : /permission denied/i);
           const [rows] = await ownerSql`SELECT COUNT(*)::int AS count, SUM(amount)::text AS total FROM konto_entries WHERE journal_id = ${journalId}`;
           expect(rows).toEqual({ count: 2, total: "0" });
           const journals = await ownerSql`SELECT id FROM konto_journals WHERE id = ${journalId}`;

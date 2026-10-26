@@ -90,7 +90,7 @@ export async function executeIntent(
       intent_type: string;
       payload: Record<string, unknown>;
       status: string;
-      expires_at: Date | null;
+      expires_at: Date | string | null;
     }[]>`
       SELECT id, intent_type, payload, status, expires_at
       FROM konto_staged_intents
@@ -103,13 +103,14 @@ export async function executeIntent(
     }
 
     const intent = intentRows[0]!;
+    const expiresAt = intent.expires_at === null ? null : new Date(intent.expires_at);
 
     // Check expiration before status — an expired PENDING intent should be
     // transitioned to EXPIRED, not treated as a normal PENDING.
     if (
       intent.status === "PENDING" &&
-      intent.expires_at &&
-      new Date() > intent.expires_at
+      expiresAt &&
+      new Date() > expiresAt
     ) {
       await tx`
         UPDATE konto_staged_intents
@@ -117,7 +118,7 @@ export async function executeIntent(
         WHERE id = ${intentId}
       `;
       throw new Error(
-        `konto: staged intent ${intentId} has expired (expired at ${intent.expires_at.toISOString()}).`,
+        `konto: staged intent ${intentId} has expired (expired at ${expiresAt.toISOString()}).`,
       );
     }
 
@@ -236,8 +237,8 @@ export async function getPendingIntents(
     idempotencyKey: r.idempotency_key,
     payload: r.payload,
     status: r.status,
-    createdAt: r.created_at,
-    executedAt: r.executed_at,
-    expiresAt: r.expires_at,
+    createdAt: new Date(r.created_at),
+    executedAt: r.executed_at === null ? null : new Date(r.executed_at),
+    expiresAt: r.expires_at === null ? null : new Date(r.expires_at),
   }));
 }

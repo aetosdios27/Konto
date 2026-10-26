@@ -13,7 +13,7 @@ import { PrismaClient } from "./.generated/prisma/client";
 import type { KontoQueryExecutor } from "@konto-ledger/types";
 import { createTestDatabase } from "../../core/test/database";
 import { createPostgresProxy } from "./postgres-proxy";
-import { createAccount, transfer, transferInTx, hold, stageIntent, executeIntent, getBalance, getJournals } from "../../core/src/index";
+import { createAccount, transfer, transferInTx, hold, stageIntent, executeIntent, getBalance, getJournals, getPendingIntents } from "../../core/src/index";
 import { createPrismaAdapter } from "../src/prisma";
 import { createDrizzleAdapter } from "../src/drizzle";
 import { createVercelAdapter } from "../src/vercel";
@@ -118,6 +118,17 @@ for (const adapter of ["postgres.js", "prisma", "drizzle-postgres.js", "drizzle-
         expect(await executeIntent(db, intentId)).toMatchObject({ success: true });
       }
       expect((await getBalance(db, bob)).balance).toBe(34n);
+    });
+
+    it("rejects expired intents before posting through every driver", async () => {
+      const before = (await getBalance(db, bob)).balance;
+      const { intentId } = await stageIntent(db, { intentType: "TRANSFER", payload: { accountId: alice, entries: [{ accountId: alice, amount: "-10" }, { accountId: bob, amount: "10" }] } });
+      const pending = (await getPendingIntents(db)).find((intent) => intent.id === intentId);
+      expect(pending?.expiresAt).toBeInstanceOf(Date);
+      expect(pending?.createdAt).toBeInstanceOf(Date);
+      await database.sql`UPDATE konto_staged_intents SET expires_at = '2000-01-01' WHERE id = ${intentId}`;
+      await expect(executeIntent(db, intentId)).rejects.toThrow(/expired/);
+      expect((await getBalance(db, bob)).balance).toBe(before);
     });
 
     it("atomically commits or rolls back a ledger posting and an event", async () => {

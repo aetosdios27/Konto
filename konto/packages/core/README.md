@@ -25,7 +25,7 @@ transaction handle to commit a ledger mutation and an application event together
 These functions never open a transaction or savepoint. The caller must commit or
 roll back the transaction, and must let errors abort it. Deferred zero-sum checks
 run when that outer transaction commits. Use the default PostgreSQL `READ COMMITTED`
-isolation level; stricter isolation levels require retrying serialization failures.
+isolation level. Stronger isolation levels are outside this concurrency contract.
 
 ```ts
 import { transferInTx } from "@konto-ledger/core";
