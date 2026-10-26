@@ -19,9 +19,9 @@ function getSql(): postgres.Sql {
 
 export const sql = new Proxy((() => {}) as unknown as postgres.Sql, {
   get(_target, prop) {
-    return (getSql() as any)[prop];
+    return Reflect.get(getSql(), prop);
   },
   apply(_target, thisArg, argArray) {
-    return (getSql() as any).apply(thisArg, argArray);
+    return Reflect.apply(getSql() as unknown as (...args: unknown[]) => unknown, thisArg, argArray);
   },
 });
